@@ -1,145 +1,151 @@
-"""PyTorch selectable adaptive pooling
-Adaptive pooling with the ability to select the type of pooling from:
-    * 'avg' - Average pooling
-    * 'max' - Max pooling
-    * 'avgmax' - Sum of average and max pooling re-scaled by 0.5
-    * 'avgmaxc' - Concatenation of average and max pooling along feature dim, doubles feature dim
+from typing import Literal, Tuple, Union
 
-Both a functional and a nn.Module version of the pooling is provided.
+import mlx.core as mx
+from mlx import nn
 
-Hacked together by / Copyright 2020 Ross Wightman
-"""
-
-from typing import Optional, Tuple, Union
-
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-
-from .format import get_spatial_dim, get_channel_dim
+from .format import FormatT, get_channel_dim, get_spatial_dim
+from .mlx_layers import (
+    AdaptiveAvgPool2d,
+    AdaptiveMaxPool2d,
+    Flatten,
+    adaptive_avg_pool2d,
+    adaptive_max_pool2d,
+)
 
 _int_tuple_2_t = Union[int, Tuple[int, int]]
 
 
-def adaptive_pool_feat_mult(pool_type="avg"):
+def adaptive_pool_feat_mult(pool_type: str = "avg") -> int:
     if pool_type.endswith("catavgmax"):
         return 2
     else:
         return 1
 
 
-def adaptive_avgmax_pool2d(x, output_size: _int_tuple_2_t = 1):
-    x_avg = F.adaptive_avg_pool2d(x, output_size)
-    x_max = F.adaptive_max_pool2d(x, output_size)
-    return 0.5 * (x_avg + x_max)
+def adaptive_avgmax_pool2d(x: mx.array, output_size: _int_tuple_2_t = 1) -> mx.array:
+    b, h, w, c = x.shape
+    ho, wo = output_size
+
+    x = x.reshape(b, ho, h // ho, wo, w // wo, c)
+    x_min = x.mean(axis=(2, 4))
+    x_max = x.max(axis=(2, 4))
+
+    return 0.5 * (x_min + x_max)
 
 
-def adaptive_catavgmax_pool2d(x, output_size: _int_tuple_2_t = 1):
-    x_avg = F.adaptive_avg_pool2d(x, output_size)
-    x_max = F.adaptive_max_pool2d(x, output_size)
-    return torch.cat((x_avg, x_max), 1)
+def adaptive_catavgmax_pool2d(x: mx.array, output_size: _int_tuple_2_t = 1) -> mx.array:
+    b, h, w, c = x.shape
+    ho, wo = output_size
+
+    x = x.reshape(b, ho, h // ho, wo, w // wo, c)
+    x_min = x.mean(axis=(2, 4))
+    x_max = x.max(axis=(2, 4))
+
+    return mx.concat([x_min, x_max], axis=3)
 
 
-def select_adaptive_pool2d(x, pool_type="avg", output_size: _int_tuple_2_t = 1):
-    """Selectable global pooling function with dynamic input kernel size"""
+def select_adaptive_pool2d(
+    x: mx.array,
+    pool_type=Literal["avg", "avgmax", "catavgmax", "max"],
+    output_size: _int_tuple_2_t = 1,
+) -> mx.array:
     if pool_type == "avg":
-        x = F.adaptive_avg_pool2d(x, output_size)
+        x = adaptive_avg_pool2d(x, output_size)
     elif pool_type == "avgmax":
         x = adaptive_avgmax_pool2d(x, output_size)
     elif pool_type == "catavgmax":
         x = adaptive_catavgmax_pool2d(x, output_size)
     elif pool_type == "max":
-        x = F.adaptive_max_pool2d(x, output_size)
+        x = adaptive_max_pool2d(x, output_size)
     else:
-        assert False, "Invalid pool type: %s" % pool_type
+        raise ValueError(f"Invalid pool type: {pool_type}")
     return x
 
 
 class FastAdaptiveAvgPool(nn.Module):
-    def __init__(self, flatten: bool = False, input_fmt: F = "NCHW"):
-        super(FastAdaptiveAvgPool, self).__init__()
+    def __init__(self, flatten: bool = False, input_fmt: FormatT = "NHWC"):
+        super().__init__()
         self.flatten = flatten
         self.dim = get_spatial_dim(input_fmt)
 
-    def forward(self, x):
-        return x.mean(self.dim, keepdim=not self.flatten)
+    def __call__(self, x: mx.array) -> mx.array:
+        return x.mean(self.dim, keepdims=not self.flatten)
 
 
 class FastAdaptiveMaxPool(nn.Module):
-    def __init__(self, flatten: bool = False, input_fmt: str = "NCHW"):
-        super(FastAdaptiveMaxPool, self).__init__()
+    def __init__(self, flatten: bool = False, input_fmt: str = "NHWC"):
+        super().__init__()
         self.flatten = flatten
         self.dim = get_spatial_dim(input_fmt)
 
-    def forward(self, x):
-        return x.amax(self.dim, keepdim=not self.flatten)
+    def __call__(self, x: mx.array) -> mx.array:
+        return x.max(self.dim, keepdims=not self.flatten)
 
 
 class FastAdaptiveAvgMaxPool(nn.Module):
-    def __init__(self, flatten: bool = False, input_fmt: str = "NCHW"):
-        super(FastAdaptiveAvgMaxPool, self).__init__()
+    def __init__(self, flatten: bool = False, input_fmt: str = "NHWC"):
+        super().__init__()
         self.flatten = flatten
         self.dim = get_spatial_dim(input_fmt)
 
-    def forward(self, x):
-        x_avg = x.mean(self.dim, keepdim=not self.flatten)
-        x_max = x.amax(self.dim, keepdim=not self.flatten)
-        return 0.5 * x_avg + 0.5 * x_max
+    def __call__(self, x: mx.array) -> mx.array:
+        x_avg = x.mean(self.dim, keepdims=not self.flatten)
+        x_max = x.max(self.dim, keepdims=not self.flatten)
+        return 0.5 * (x_avg + x_max)
 
 
 class FastAdaptiveCatAvgMaxPool(nn.Module):
-    def __init__(self, flatten: bool = False, input_fmt: str = "NCHW"):
-        super(FastAdaptiveCatAvgMaxPool, self).__init__()
+    def __init__(self, flatten: bool = False, input_fmt: str = "NHWC"):
+        super().__init__()
         self.flatten = flatten
         self.dim_reduce = get_spatial_dim(input_fmt)
+
         if flatten:
-            self.dim_cat = 1
+            self.dim_cat = 3
         else:
             self.dim_cat = get_channel_dim(input_fmt)
 
-    def forward(self, x):
-        x_avg = x.mean(self.dim_reduce, keepdim=not self.flatten)
-        x_max = x.amax(self.dim_reduce, keepdim=not self.flatten)
-        return torch.cat((x_avg, x_max), self.dim_cat)
+    def __call__(self, x: mx.array) -> mx.array:
+        x_avg = x.mean(self.dim_reduce, keepdims=not self.flatten)
+        x_max = x.max(self.dim_reduce, keepdims=not self.flatten)
+        return mx.concat([x_avg, x_max], axis=self.dim_cat)
 
 
 class AdaptiveAvgMaxPool2d(nn.Module):
     def __init__(self, output_size: _int_tuple_2_t = 1):
-        super(AdaptiveAvgMaxPool2d, self).__init__()
+        super().__init__()
         self.output_size = output_size
 
-    def forward(self, x):
+    def __call__(self, x: mx.array) -> mx.array:
         return adaptive_avgmax_pool2d(x, self.output_size)
 
 
 class AdaptiveCatAvgMaxPool2d(nn.Module):
     def __init__(self, output_size: _int_tuple_2_t = 1):
-        super(AdaptiveCatAvgMaxPool2d, self).__init__()
+        super().__init__()
         self.output_size = output_size
 
-    def forward(self, x):
+    def __call__(self, x: mx.array) -> mx.array:
         return adaptive_catavgmax_pool2d(x, self.output_size)
 
 
 class SelectAdaptivePool2d(nn.Module):
-    """Selectable global pooling layer with dynamic input kernel size"""
-
     def __init__(
         self,
         output_size: _int_tuple_2_t = 1,
         pool_type: str = "fast",
         flatten: bool = False,
-        input_fmt: str = "NCHW",
+        input_fmt: str = "NHWC",
     ):
-        super(SelectAdaptivePool2d, self).__init__()
+        super().__init__()
         assert input_fmt in ("NCHW", "NHWC")
-        self.pool_type = (
-            pool_type or ""
-        )  # convert other falsy values to empty string for consistent TS typing
+
+        self.pool_type = pool_type or ""
         pool_type = pool_type.lower()
+
         if not pool_type:
             self.pool = nn.Identity()  # pass through
-            self.flatten = nn.Flatten(1) if flatten else nn.Identity()
+            self.flatten = Flatten(1) if flatten else nn.Identity()
         elif pool_type.startswith("fast") or input_fmt != "NCHW":
             assert (
                 output_size == 1
@@ -162,20 +168,20 @@ class SelectAdaptivePool2d(nn.Module):
             elif pool_type == "catavgmax":
                 self.pool = AdaptiveCatAvgMaxPool2d(output_size)
             elif pool_type == "max":
-                self.pool = nn.AdaptiveMaxPool2d(output_size)
+                self.pool = AdaptiveMaxPool2d(output_size)
             elif pool_type == "avg":
-                self.pool = nn.AdaptiveAvgPool2d(output_size)
+                self.pool = AdaptiveAvgPool2d(output_size)
             else:
-                assert False, "Invalid pool type: %s" % pool_type
-            self.flatten = nn.Flatten(1) if flatten else nn.Identity()
+                raise AssertionError(f"Invalid pool type: {pool_type}")
+
+            self.flatten = Flatten(1) if flatten else nn.Identity()
 
     def is_identity(self):
         return not self.pool_type
 
-    def forward(self, x):
+    def __call__(self, x: mx.array) -> mx.array:
         x = self.pool(x)
-        x = self.flatten(x)
-        return x
+        return self.flatten(x)
 
     def feat_mult(self):
         return adaptive_pool_feat_mult(self.pool_type)
