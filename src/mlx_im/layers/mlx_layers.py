@@ -20,7 +20,7 @@ class Flatten(nn.Module):
 
 def adaptive_avg_pool2d(x: mx.array, output_size) -> mx.array:
     b, h, w, c = x.shape
-    ho, wo = output_size
+    ho, wo = to_2tuple(output_size)
     x = x.reshape(b, ho, h // ho, wo, w // wo, c)
     return x.mean(axis=(2, 4))
 

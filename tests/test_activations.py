@@ -25,7 +25,7 @@ def test_act_fn(act_name):
     mx.eval(out_mlx)
 
     out_mlx = U.mlx_to_numpy_2d(out_mlx)
-    out_timm = out_timm.numpy()
+    out_timm = U.torch_to_numpy_2d(out_timm)
 
     assert np.allclose(
         out_mlx, out_timm, atol=1.0e-5

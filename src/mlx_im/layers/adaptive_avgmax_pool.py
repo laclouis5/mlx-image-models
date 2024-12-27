@@ -4,6 +4,7 @@ import mlx.core as mx
 from mlx import nn
 
 from .format import FormatT, get_channel_dim, get_spatial_dim
+from .helpers import to_2tuple
 from .mlx_layers import (
     AdaptiveAvgPool2d,
     AdaptiveMaxPool2d,
@@ -24,7 +25,7 @@ def adaptive_pool_feat_mult(pool_type: str = "avg") -> int:
 
 def adaptive_avgmax_pool2d(x: mx.array, output_size: _int_tuple_2_t = 1) -> mx.array:
     b, h, w, c = x.shape
-    ho, wo = output_size
+    ho, wo = to_2tuple(output_size)
 
     x = x.reshape(b, ho, h // ho, wo, w // wo, c)
     x_min = x.mean(axis=(2, 4))
@@ -35,7 +36,7 @@ def adaptive_avgmax_pool2d(x: mx.array, output_size: _int_tuple_2_t = 1) -> mx.a
 
 def adaptive_catavgmax_pool2d(x: mx.array, output_size: _int_tuple_2_t = 1) -> mx.array:
     b, h, w, c = x.shape
-    ho, wo = output_size
+    ho, wo = to_2tuple(output_size)
 
     x = x.reshape(b, ho, h // ho, wo, w // wo, c)
     x_min = x.mean(axis=(2, 4))
@@ -146,10 +147,8 @@ class SelectAdaptivePool2d(nn.Module):
         if not pool_type:
             self.pool = nn.Identity()  # pass through
             self.flatten = Flatten(1) if flatten else nn.Identity()
-        elif pool_type.startswith("fast") or input_fmt != "NCHW":
-            assert (
-                output_size == 1
-            ), "Fast pooling and non NCHW input formats require output_size == 1."
+        elif pool_type.startswith("fast"):
+            assert output_size == 1, "Fast pooling require output_size == 1."
             if pool_type.endswith("catavgmax"):
                 self.pool = FastAdaptiveCatAvgMaxPool(flatten, input_fmt=input_fmt)
             elif pool_type.endswith("avgmax"):
@@ -162,7 +161,6 @@ class SelectAdaptivePool2d(nn.Module):
                 assert False, "Invalid pool type: %s" % pool_type
             self.flatten = nn.Identity()
         else:
-            assert input_fmt == "NCHW"
             if pool_type == "avgmax":
                 self.pool = AdaptiveAvgMaxPool2d(output_size)
             elif pool_type == "catavgmax":
