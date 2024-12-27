@@ -81,7 +81,7 @@ class HardSigmoid(nn.Module):
 
 
 def hard_mish(x: mx.array, inplace: bool = False) -> mx.array:
-    return mx.clip(0.5 * x * (x + 2), a_min=0, a_max=2)
+    return 0.5 * x * mx.clip(x + 2, a_min=0, a_max=2)
 
 
 class HardMish(nn.Module):
