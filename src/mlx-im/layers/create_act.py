@@ -1,109 +1,78 @@
-"""Activation Factory
-Hacked together by / Copyright 2020 Ross Wightman
-"""
+from typing import Callable, Type, Union
 
-from typing import Union, Callable, Type
+from mlx import nn
 
-from .activations import *
-from .activations_me import *
-from .config import is_exportable, is_scriptable
-
-# PyTorch has an optimized, native 'silu' (aka 'swish') operator as of PyTorch 1.7.
-# Also hardsigmoid, hardswish, and soon mish. This code will use native version if present.
-# Eventually, the custom SiLU, Mish, Hard*, layers will be removed and only native variants will be used.
-_has_silu = "silu" in dir(torch.nn.functional)
-_has_hardswish = "hardswish" in dir(torch.nn.functional)
-_has_hardsigmoid = "hardsigmoid" in dir(torch.nn.functional)
-_has_mish = "mish" in dir(torch.nn.functional)
-
+from .activations import (
+    GELUTanh,
+    HardMish,
+    HardSigmoid,
+    QuickGELU,
+    hard_mish,
+    hard_sigmoid,
+)
 
 _ACT_FN_DEFAULT = dict(
-    silu=F.silu if _has_silu else swish,
-    swish=F.silu if _has_silu else swish,
-    mish=F.mish if _has_mish else mish,
-    relu=F.relu,
-    relu6=F.relu6,
-    leaky_relu=F.leaky_relu,
-    elu=F.elu,
-    celu=F.celu,
-    selu=F.selu,
-    gelu=gelu,
-    gelu_tanh=gelu_tanh,
-    quick_gelu=quick_gelu,
-    sigmoid=sigmoid,
-    tanh=tanh,
-    hard_sigmoid=F.hardsigmoid if _has_hardsigmoid else hard_sigmoid,
-    hard_swish=F.hardswish if _has_hardswish else hard_swish,
+    silu=nn.silu,
+    swish=nn.silu,
+    mish=nn.mish,
+    relu=nn.relu,
+    relu6=nn.relu6,
+    leaky_relu=nn.leaky_relu,
+    elu=nn.elu,
+    celu=nn.celu,
+    selu=nn.selu,
+    gelu=nn.gelu,
+    gelu_tanh=nn.gelu_approx,
+    quick_gelu=nn.gelu_fast_approx,
+    sigmoid=nn.sigmoid,
+    tanh=nn.tanh,
+    hard_sigmoid=hard_sigmoid,
+    hard_swish=nn.hardswish,
     hard_mish=hard_mish,
 )
 
-_ACT_FN_ME = dict(
-    silu=F.silu if _has_silu else swish_me,
-    swish=F.silu if _has_silu else swish_me,
-    mish=F.mish if _has_mish else mish_me,
-    hard_sigmoid=F.hardsigmoid if _has_hardsigmoid else hard_sigmoid_me,
-    hard_swish=F.hardswish if _has_hardswish else hard_swish_me,
-    hard_mish=hard_mish_me,
-)
+_ACT_FNS = (_ACT_FN_DEFAULT,)
 
-_ACT_FNS = (_ACT_FN_ME, _ACT_FN_DEFAULT)
 for a in _ACT_FNS:
     a.setdefault("hardsigmoid", a.get("hard_sigmoid"))
     a.setdefault("hardswish", a.get("hard_swish"))
 
 
 _ACT_LAYER_DEFAULT = dict(
-    silu=nn.SiLU if _has_silu else Swish,
-    swish=nn.SiLU if _has_silu else Swish,
-    mish=nn.Mish if _has_mish else Mish,
+    silu=nn.SiLU,
+    swish=nn.SiLU,
+    mish=nn.Mish,
     relu=nn.ReLU,
     relu6=nn.ReLU6,
     leaky_relu=nn.LeakyReLU,
     elu=nn.ELU,
-    prelu=PReLU,
+    prelu=nn.PReLU,
     celu=nn.CELU,
     selu=nn.SELU,
-    gelu=GELU,
+    gelu=nn.GELU,
     gelu_tanh=GELUTanh,
     quick_gelu=QuickGELU,
-    sigmoid=Sigmoid,
-    tanh=Tanh,
-    hard_sigmoid=nn.Hardsigmoid if _has_hardsigmoid else HardSigmoid,
-    hard_swish=nn.Hardswish if _has_hardswish else HardSwish,
+    sigmoid=nn.Sigmoid,
+    tanh=nn.Tanh,
+    hard_sigmoid=HardSigmoid,
+    hard_swish=nn.Hardswish,
     hard_mish=HardMish,
     identity=nn.Identity,
 )
 
-_ACT_LAYER_ME = dict(
-    silu=nn.SiLU if _has_silu else SwishMe,
-    swish=nn.SiLU if _has_silu else SwishMe,
-    mish=nn.Mish if _has_mish else MishMe,
-    hard_sigmoid=nn.Hardsigmoid if _has_hardsigmoid else HardSigmoidMe,
-    hard_swish=nn.Hardswish if _has_hardswish else HardSwishMe,
-    hard_mish=HardMishMe,
-)
+_ACT_LAYERS = (_ACT_LAYER_DEFAULT,)
 
-_ACT_LAYERS = (_ACT_LAYER_ME, _ACT_LAYER_DEFAULT)
 for a in _ACT_LAYERS:
     a.setdefault("hardsigmoid", a.get("hard_sigmoid"))
     a.setdefault("hardswish", a.get("hard_swish"))
 
 
 def get_act_fn(name: Union[Callable, str] = "relu"):
-    """Activation Function Factory
-    Fetching activation fns by name with this function allows export or torch script friendly
-    functions to be returned dynamically based on current config.
-    """
     if not name:
         return None
     if isinstance(name, Callable):
         return name
     name = name.lower()
-    if not (is_exportable() or is_scriptable()):
-        # If not exporting or scripting the model, first look for a memory-efficient version with
-        # custom autograd, then fallback
-        if name in _ACT_FN_ME:
-            return _ACT_FN_ME[name]
     return _ACT_FN_DEFAULT[name]
 
 
@@ -120,9 +89,6 @@ def get_act_layer(name: Union[Type[nn.Module], str] = "relu"):
     if not name:
         return None
     name = name.lower()
-    if not (is_exportable() or is_scriptable()):
-        if name in _ACT_LAYER_ME:
-            return _ACT_LAYER_ME[name]
     return _ACT_LAYER_DEFAULT[name]
 
 
