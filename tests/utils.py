@@ -3,9 +3,13 @@ import numpy as np
 import torch
 
 
+def torch_to_numpy_2d(x: torch.Tensor) -> np.ndarray:
+    return x.detach().numpy()
+
+
 def torch_to_mlx_2d(x: torch.Tensor) -> mx.array:
     x = x.permute(0, 2, 3, 1)
-    return mx.array(x.detach().numpy())
+    return mx.array(torch_to_numpy_2d(x))
 
 
 def mlx_to_numpy_2d(x: mx.array) -> np.ndarray:
