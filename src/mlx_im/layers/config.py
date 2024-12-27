@@ -1,10 +1,4 @@
-"""Model / Layer Config singleton state"""
-
-import os
-import warnings
 from typing import Any, Optional
-
-import torch
 
 __all__ = [
     "is_exportable",
@@ -32,15 +26,11 @@ _EXPORTABLE = False
 # Set to True if wanting to use torch.jit.script on a model
 _SCRIPTABLE = False
 
+# MLX has a fast fused attention kernel
+_HAS_FUSED_ATTN = True
 
-# use torch.scaled_dot_product_attention where possible
-_HAS_FUSED_ATTN = hasattr(torch.nn.functional, "scaled_dot_product_attention")
-if "TIMM_FUSED_ATTN" in os.environ:
-    _USE_FUSED_ATTN = int(os.environ["TIMM_FUSED_ATTN"])
-else:
-    _USE_FUSED_ATTN = (
-        1  # 0 == off, 1 == on (for tested use), 2 == on (for experimental use)
-    )
+# Use the fast attention by default
+_USE_FUSED_ATTN = True
 
 
 def is_no_jit():
@@ -140,23 +130,11 @@ class set_layer_config:
 
 def use_fused_attn(experimental: bool = False) -> bool:
     # NOTE: ONNX export cannot handle F.scaled_dot_product_attention as of pytorch 2.0
-    if not _HAS_FUSED_ATTN or _EXPORTABLE:
+    if _EXPORTABLE:
         return False
-    if experimental:
-        return _USE_FUSED_ATTN > 1
-    return _USE_FUSED_ATTN > 0
+    return _USE_FUSED_ATTN
 
 
 def set_fused_attn(enable: bool = True, experimental: bool = False):
     global _USE_FUSED_ATTN
-    if not _HAS_FUSED_ATTN:
-        warnings.warn(
-            "This version of pytorch does not have F.scaled_dot_product_attention, fused_attn flag ignored."
-        )
-        return
-    if experimental and enable:
-        _USE_FUSED_ATTN = 2
-    elif enable:
-        _USE_FUSED_ATTN = 1
-    else:
-        _USE_FUSED_ATTN = 0
+    _USE_FUSED_ATTN = enable
