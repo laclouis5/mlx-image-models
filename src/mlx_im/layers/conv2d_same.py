@@ -1,31 +1,33 @@
-"""Conv2d w/ Same Padding
+from typing import Optional, Tuple
 
-Hacked together by / Copyright 2020 Ross Wightman
-"""
-
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from typing import Tuple, Optional
+import mlx.core as mx
+from mlx import nn
 
 from .config import is_exportable, is_scriptable
-from .padding import pad_same, pad_same_arg, get_padding_value
-
+from .helpers import _int_tuple_2_t, to_2tuple
+from .padding import get_padding_value, pad_same
 
 _USE_EXPORT_CONV = False
 
 
 def conv2d_same(
     x,
-    weight: torch.Tensor,
-    bias: Optional[torch.Tensor] = None,
+    weight: mx.array,
+    bias: Optional[mx.array] = None,
     stride: Tuple[int, int] = (1, 1),
     padding: Tuple[int, int] = (0, 0),
     dilation: Tuple[int, int] = (1, 1),
     groups: int = 1,
-):
-    x = pad_same(x, weight.shape[-2:], stride, dilation)
-    return F.conv2d(x, weight, bias, stride, (0, 0), dilation, groups)
+) -> mx.array:
+    x = pad_same(x, weight.shape[1:3], stride, dilation)
+    x = mx.conv2d(
+        x, weight, stride=stride, padding=(0, 0), dilation=dilation, groups=groups
+    )
+
+    if bias is not None:
+        return x + bias
+
+    return x
 
 
 class Conv2dSame(nn.Conv2d):
@@ -33,31 +35,31 @@ class Conv2dSame(nn.Conv2d):
 
     def __init__(
         self,
-        in_channels,
-        out_channels,
-        kernel_size,
-        stride=1,
-        padding=0,
-        dilation=1,
+        in_channels: int,
+        out_channels: int,
+        kernel_size: _int_tuple_2_t,
+        stride: _int_tuple_2_t = 1,
+        padding: _int_tuple_2_t = 0,
+        dilation: _int_tuple_2_t = 1,
         groups=1,
         bias=True,
     ):
-        super(Conv2dSame, self).__init__(
+        super().__init__(
             in_channels,
             out_channels,
-            kernel_size,
-            stride,
-            0,
-            dilation,
+            to_2tuple(kernel_size),
+            to_2tuple(stride),
+            to_2tuple(0),
+            to_2tuple(dilation),
             groups,
             bias,
         )
 
-    def forward(self, x):
+    def __call__(self, x: mx.array) -> mx.array:
         return conv2d_same(
             x,
             self.weight,
-            self.bias,
+            self.bias if hasattr(self, "bias") else None,
             self.stride,
             self.padding,
             self.dilation,
@@ -66,12 +68,6 @@ class Conv2dSame(nn.Conv2d):
 
 
 class Conv2dSameExport(nn.Conv2d):
-    """ONNX export friendly Tensorflow like 'SAME' convolution wrapper for 2D convolutions
-
-    NOTE: This does not currently work with torch.jit.script
-    """
-
-    # pylint: disable=unused-argument
     def __init__(
         self,
         in_channels,
@@ -83,41 +79,13 @@ class Conv2dSameExport(nn.Conv2d):
         groups=1,
         bias=True,
     ):
-        super(Conv2dSameExport, self).__init__(
-            in_channels,
-            out_channels,
-            kernel_size,
-            stride,
-            0,
-            dilation,
-            groups,
-            bias,
-        )
-        self.pad = None
-        self.pad_input_size = (0, 0)
+        raise NotImplementedError
 
-    def forward(self, x):
-        input_size = x.size()[-2:]
-        if self.pad is None:
-            pad_arg = pad_same_arg(
-                input_size, self.weight.size()[-2:], self.stride, self.dilation
-            )
-            self.pad = nn.ZeroPad2d(pad_arg)
-            self.pad_input_size = input_size
-
-        x = self.pad(x)
-        return F.conv2d(
-            x,
-            self.weight,
-            self.bias,
-            self.stride,
-            self.padding,
-            self.dilation,
-            self.groups,
-        )
+    def forward(self, x: mx.array) -> mx.array:
+        raise NotImplementedError
 
 
-def create_conv2d_pad(in_chs, out_chs, kernel_size, **kwargs):
+def create_conv2d_pad(in_chs: int, out_chs: int, kernel_size: _int_tuple_2_t, **kwargs):
     padding = kwargs.pop("padding", "")
     kwargs.setdefault("bias", False)
     padding, is_dynamic = get_padding_value(padding, kernel_size, **kwargs)

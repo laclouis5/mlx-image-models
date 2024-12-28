@@ -1,14 +1,11 @@
-"""Create Conv2d Factory Method
-
-Hacked together by / Copyright 2020 Ross Wightman
-"""
-
-from .mixed_conv2d import MixedConv2d
 from .cond_conv2d import CondConv2d
 from .conv2d_same import create_conv2d_pad
+from .mixed_conv2d import MixedConv2d
 
 
-def create_conv2d(in_channels, out_channels, kernel_size, **kwargs):
+def create_conv2d(
+    in_channels: int, out_channels: int, kernel_size: int | list[int], **kwargs
+):
     """Select a 2d convolution implementation based on arguments
     Creates and returns one of torch.nn.Conv2d, Conv2dSame, MixedConv2d, or CondConv2d.
 

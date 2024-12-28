@@ -1,11 +1,8 @@
-from typing import Tuple, Union
-
 import mlx.core as mx
 from mlx import nn
 
-from .helpers import to_2tuple
+from .helpers import to_2tuple, _int_tuple_2_t
 
-_int_tuple_2_t = Union[int, Tuple[int, int]]
 
 
 class Flatten(nn.Module):

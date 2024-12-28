@@ -5,6 +5,9 @@ Hacked together by / Copyright 2020 Ross Wightman
 
 import collections.abc
 from itertools import repeat
+from typing import Tuple, Union
+
+_int_tuple_2_t = Union[int, Tuple[int, int]]
 
 
 # From PyTorch internals
