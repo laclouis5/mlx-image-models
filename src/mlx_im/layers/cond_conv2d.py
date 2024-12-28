@@ -34,13 +34,6 @@ def get_condconv_initializer(
 
 
 class CondConv2d(nn.Module):
-    """Conditionally Parameterized Convolution
-    Inspired by: https://github.com/tensorflow/tpu/blob/master/models/official/efficientnet/condconv/condconv_layers.py
-
-    Grouped convolution hackery for parallel execution of the per-sample kernel filters inspired by this discussion:
-    https://github.com/pytorch/pytorch/issues/17983
-    """
-
     __constants__ = ["in_channels", "out_channels", "dynamic_padding"]
 
     def __init__(
@@ -70,11 +63,6 @@ class CondConv2d(nn.Module):
         self.groups = groups  # G
         self.num_experts = num_experts  # E
 
-        # TODO: Adapt shape for MLX data format BHWC
-        # self.weight_shape = (
-        #     self.out_channels,
-        #     self.in_channels // self.groups,
-        # ) + self.kernel_size  # (O, I // G, K, K)
         self.weight_shape = (
             self.out_channels,
             self.kernel_size[0],
@@ -168,61 +156,3 @@ class CondConv2d(nn.Module):
 
         # (B, H, W, O)
         return out.transpose(2, 0, 1, 3)
-
-    # (B, H, W, C), (B, E)
-    def forward(self, x: mx.array, routing_weights: mx.array) -> mx.array:
-        B, C, H, W = x.shape
-
-        # (B, E) @ (E, P) -> (B, P)
-        weight = mx.matmul(routing_weights, self.weight)
-
-        # (B*O, I//G, K, K)
-        new_weight_shape = (
-            B * self.out_channels,
-            self.in_channels // self.groups,
-        ) + self.kernel_size
-
-        # (B, Ox(I//G)*K*K) -> (B*O, I//G, K, K)
-        weight = weight.reshape(new_weight_shape)
-
-        bias = None
-        if self.bias is not None:
-            # (B, E) @ (E, O) -> (B, O)
-            bias = mx.matmul(routing_weights, self.bias)
-
-            # (B, O) -> (B*O,)
-            bias = bias.reshape(B * self.out_channels)
-        # move batch elements with channels so each batch element can be efficiently convolved with separate kernel
-        # reshape instead of view to work with channels_last input
-
-        # (1, B*C, H, W)
-        x = x.reshape(1, B * C, H, W)
-
-        if self.dynamic_padding:
-            out = conv2d_same(
-                x,
-                weight,
-                bias,
-                stride=self.stride,
-                padding=self.padding,
-                dilation=self.dilation,
-                groups=self.groups * B,
-            )
-        else:
-            # (1, B*C, H, W), (B*O, I//G, K, K) -> (1, B*O, H, W)
-            out = mx.conv2d(
-                x,
-                weight,
-                bias,
-                stride=self.stride,
-                padding=self.padding,
-                dilation=self.dilation,
-                groups=self.groups * B,
-            )
-
-        # (1, B*O, H, W) -> (B, O, H, W)
-        out = out.transpose(1, 0, 2, 3).reshape(
-            B, self.out_channels, out.shape[-2], out.shape[-1]
-        )
-
-        return out
