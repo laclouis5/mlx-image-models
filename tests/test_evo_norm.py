@@ -2,7 +2,6 @@ import mlx.core as mx
 import numpy as np
 import pytest
 import timm.layers.evo_norm as timm_evo_norm
-import torch
 
 import mlx_im.layers.evo_norm as mlx_evo_norm
 
