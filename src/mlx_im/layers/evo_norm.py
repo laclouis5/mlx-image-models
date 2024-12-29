@@ -1,4 +1,4 @@
-from typing import Sequence, Union
+from typing import Sequence, Type, Union
 
 import mlx.core as mx
 from mlx import nn
@@ -289,7 +289,7 @@ class EvoNorm2dS1(nn.Module):
         groups: int = 32,
         group_size: int | None = None,
         apply_act: bool = True,
-        act_layer: str | nn.Module | None = None,
+        act_layer: str | Type[nn.Module] | None = None,
         eps: float = 1e-5,
         **_,
     ):
@@ -331,7 +331,7 @@ class EvoNorm2dS1a(EvoNorm2dS1):
         groups: int = 32,
         group_size: int | None = None,
         apply_act: bool = True,
-        act_layer: str | nn.Module | None = None,
+        act_layer: str | Type[nn.Module] | None = None,
         eps=1e-3,
         **_,
     ):
@@ -358,7 +358,7 @@ class EvoNorm2dS2(nn.Module):
         groups: int = 32,
         group_size: int | None = None,
         apply_act: bool = True,
-        act_layer: str | nn.Module | None = None,
+        act_layer: str | Type[nn.Module] | None = None,
         eps: float = 1e-5,
         **_,
     ):
@@ -398,7 +398,7 @@ class EvoNorm2dS2a(EvoNorm2dS2):
         groups: int = 32,
         group_size: int | None = None,
         apply_act: bool = True,
-        act_layer: str | nn.Module | None = None,
+        act_layer: str | Type[nn.Module] | None = None,
         eps: float = 1e-3,
         **_,
     ):

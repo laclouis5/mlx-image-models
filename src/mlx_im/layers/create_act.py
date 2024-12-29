@@ -76,7 +76,7 @@ def get_act_fn(name: Union[Callable, str] = "relu"):
     return _ACT_FN_DEFAULT[name]
 
 
-def get_act_layer(name: Union[Type[nn.Module], str] = "relu"):
+def get_act_layer(name: Union[Type[nn.Module], str, None] = "relu"):
     """Activation Layer Factory
     Fetching activation layers by name with this function allows export or torch script friendly
     functions to be returned dynamically based on current config.

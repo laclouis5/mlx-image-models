@@ -1,3 +1,5 @@
+from typing import Type
+
 import mlx.core as mx
 from mlx import nn
 
@@ -43,7 +45,7 @@ class FilterResponseNormAct2d(nn.Module):
         self,
         num_features: int,
         apply_act: bool = True,
-        act_layer: str | nn.Module | None = nn.ReLU,
+        act_layer: str | Type[nn.Module] | None = nn.ReLU,
         inplace: bool = None,
         rms: bool = True,
         eps: float = 1e-5,
