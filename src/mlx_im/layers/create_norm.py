@@ -1,23 +1,38 @@
-"""Norm Layer Factory
-
-Create norm modules by string (to mirror create_act and creat_norm-act fns)
-
-Copyright 2022 Ross Wightman
-"""
-
 import functools
 import types
-from typing import Type
 
-import torch.nn as nn
+from mlx import nn
 
 from .norm import GroupNorm, GroupNorm1, LayerNorm, LayerNorm2d, RmsNorm, RmsNorm2d
-from torchvision.ops.misc import FrozenBatchNorm2d
+
+
+class FrozenBatchNorm2d(nn.BatchNorm):
+    def __init__(
+        self,
+        num_features: int,
+        eps: float = 0.00001,
+        momentum: float = 0.1,
+        affine: bool = True,
+    ):
+        super().__init__(num_features, eps, momentum, affine, track_running_stats=True)
+        self.freeze()
+        self.eval()
+
+    def unfreeze(self, *args, **kwargs):
+        super().unfreeze(*args, **kwargs)
+        self.freeze(
+            keys=["weight", "bias", "running_mean", "running_var"], recurse=False
+        )
+
+    def train(self, mode=True):
+        """This module is frozen and `training` is always false."""
+        return super().train(False)
+
 
 _NORM_MAP = dict(
-    batchnorm=nn.BatchNorm2d,
-    batchnorm2d=nn.BatchNorm2d,
-    batchnorm1d=nn.BatchNorm1d,
+    batchnorm=nn.BatchNorm,
+    batchnorm2d=nn.BatchNorm,
+    batchnorm1d=nn.BatchNorm,
     groupnorm=GroupNorm,
     groupnorm1=GroupNorm1,
     layernorm=LayerNorm,
@@ -29,13 +44,13 @@ _NORM_MAP = dict(
 _NORM_TYPES = {m for n, m in _NORM_MAP.items()}
 
 
-def create_norm_layer(layer_name, num_features, **kwargs):
+def create_norm_layer(layer_name: str, num_features: int, **kwargs) -> nn.Module:
     layer = get_norm_layer(layer_name)
     layer_instance = layer(num_features, **kwargs)
     return layer_instance
 
 
-def get_norm_layer(norm_layer):
+def get_norm_layer(norm_layer: str) -> nn.Module:
     if norm_layer is None:
         return None
     assert isinstance(norm_layer, (type, str, types.FunctionType, functools.partial))
