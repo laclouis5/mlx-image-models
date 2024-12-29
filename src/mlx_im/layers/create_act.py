@@ -92,7 +92,9 @@ def get_act_layer(name: Union[Type[nn.Module], str, None] = "relu"):
     return _ACT_LAYER_DEFAULT[name]
 
 
-def create_act_layer(name: Union[Type[nn.Module], str], inplace=None, **kwargs):
+def create_act_layer(
+    name: Union[Type[nn.Module], str, None], inplace: bool | None = None, **kwargs
+):
     act_layer = get_act_layer(name)
     if act_layer is None:
         return None
