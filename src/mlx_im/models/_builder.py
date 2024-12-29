@@ -5,28 +5,27 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-from torch import nn as nn
-from torch.hub import load_state_dict_from_url
-
 from timm.models._features import (
-    FeatureListNet,
     FeatureDictNet,
-    FeatureHookNet,
     FeatureGetterNet,
+    FeatureHookNet,
+    FeatureListNet,
 )
 from timm.models._features_fx import FeatureGraphNet
 from timm.models._helpers import load_state_dict
 from timm.models._hub import (
-    has_hf_hub,
-    download_cached_file,
     check_cached_file,
-    load_state_dict_from_hf,
+    download_cached_file,
+    has_hf_hub,
     load_custom_from_hf,
+    load_state_dict_from_hf,
 )
 from timm.models._manipulate import adapt_input_conv
 from timm.models._pretrained import PretrainedCfg
 from timm.models._prune import adapt_model_from_file
 from timm.models._registry import get_pretrained_cfg
+from torch import nn as nn
+from torch.hub import load_state_dict_from_url
 
 _logger = logging.getLogger(__name__)
 

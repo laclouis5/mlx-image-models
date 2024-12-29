@@ -4,7 +4,6 @@ from mlx import nn
 from .helpers import to_2tuple, _int_tuple_2_t
 
 
-
 class Flatten(nn.Module):
     def __init__(self, start_axis: int = 0, end_axis: int = -1):
         super().__init__()
