@@ -24,5 +24,5 @@ def test_pad_same(kernel_size, stride, dilation):
     out_timm = U.torch_to_numpy_2d(out_timm)
 
     assert np.allclose(
-        out_mlx, out_timm, atol=1.0e-5
+        out_mlx, out_timm, atol=1.0e-9
     ), f"{np.max(np.abs(out_mlx - out_timm)).item()}"

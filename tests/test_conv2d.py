@@ -63,7 +63,7 @@ def test_conv2d_same(kernel_size, padding, stride, dilation, groups, bias):
     out_timm = U.torch_to_numpy_2d(out_timm)
 
     assert np.allclose(
-        out_mlx, out_timm, atol=1.0e-5
+        out_mlx, out_timm, atol=1.0e-6
     ), f"{np.max(np.abs(out_mlx - out_timm)).item()}"
 
 
@@ -114,16 +114,17 @@ def test_conv2d_mixed(kernel_size, padding, stride, dilation, bias):
     out_timm = U.torch_to_numpy_2d(out_timm)
 
     assert np.allclose(
-        out_mlx, out_timm, atol=1.0e-5
+        out_mlx, out_timm, atol=1.0e-6
     ), f"{np.max(np.abs(out_mlx - out_timm)).item()}"
 
 
 @pytest.mark.parametrize(
     "kernel_size,padding,stride,dilation",
     [
-        # (1, 0, 1, 1),
+        (1, 0, 1, 1),
         (3, 1, 1, 1),
-        # (3, 1, 2, 1),
+        (3, 1, 2, 1),
+        (3, 1, 1, 2),
     ],
 )
 @pytest.mark.parametrize("bias", [True, False])
@@ -176,5 +177,5 @@ def test_conv2d_cond(kernel_size, padding, stride, dilation, bias):
     out_timm = U.torch_to_numpy_2d(out_timm)
 
     assert np.allclose(
-        out_mlx, out_timm, atol=1.0e-5
+        out_mlx, out_timm, atol=1.0e-6
     ), f"{np.max(np.abs(out_mlx - out_timm)).item()}"

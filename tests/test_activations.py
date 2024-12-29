@@ -28,7 +28,7 @@ def test_act_fn(act_name):
     out_timm = U.torch_to_numpy_2d(out_timm)
 
     assert np.allclose(
-        out_mlx, out_timm, atol=1.0e-5
+        out_mlx, out_timm, atol=1.0e-6
     ), f"{np.max(np.abs(out_mlx - out_timm)).item()}"
 
 
@@ -49,5 +49,5 @@ def test_act_layer(act_name):
     out_timm = U.torch_to_numpy_2d(out_timm)
 
     assert np.allclose(
-        out_mlx, out_timm, atol=1.0e-5
+        out_mlx, out_timm, atol=1.0e-6
     ), f"{np.max(np.abs(out_mlx - out_timm)).item()}"

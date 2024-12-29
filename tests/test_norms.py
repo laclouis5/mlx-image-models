@@ -41,7 +41,7 @@ def test_norm_2d(norm_name):
     out_timm = U.torch_to_numpy_2d(out_timm)
 
     assert np.allclose(
-        out_mlx, out_timm, atol=1.0e-5
+        out_mlx, out_timm, atol=1.0e-7
     ), f"{np.max(np.abs(out_mlx - out_timm)).item()}"
 
 
@@ -64,7 +64,7 @@ def test_norm_1d(norm_name):
     out_timm = out_timm.detach().numpy()
 
     assert np.allclose(
-        out_mlx, out_timm, atol=1.0e-5
+        out_mlx, out_timm, atol=1.0e-7
     ), f"{np.max(np.abs(out_mlx - out_timm)).item()}"
 
 
