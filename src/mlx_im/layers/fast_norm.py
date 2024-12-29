@@ -1,7 +1,6 @@
 from typing import Optional
 
 import mlx.core as mx
-from mlx import nn
 
 # fast (ie lower precision LN) can be disabled with this flag if issues crop up
 _USE_FAST_NORM = False  # defaulting to False for now
