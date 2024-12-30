@@ -1,21 +1,24 @@
-"""NormAct (Normalizaiton + Activation Layer) Factory
-
-Create norm + act combo modules that attempt to be backwards compatible with separate norm + act
-isntances in models. Where these are used it will be possible to swap separate BN + act layers with
-combined modules like IABN or EvoNorms.
-
-Hacked together by / Copyright 2020 Ross Wightman
-"""
-
-import types
 import functools
+import types
 
-from .evo_norm import *
+from mlx import nn
+
+from .evo_norm import (
+    EvoNorm2dB0,
+    EvoNorm2dB1,
+    EvoNorm2dB2,
+    EvoNorm2dS0,
+    EvoNorm2dS0a,
+    EvoNorm2dS1,
+    EvoNorm2dS1a,
+    EvoNorm2dS2,
+    EvoNorm2dS2a,
+)
 from .filter_response_norm import FilterResponseNormAct2d, FilterResponseNormTlu2d
-from .norm_act import BatchNormAct2d, GroupNormAct, LayerNormAct, LayerNormAct2d
 from .inplace_abn import InplaceAbn
+from .norm_act import BatchNormAct2d, GroupNormAct, LayerNormAct, LayerNormAct2d
 
-_NORM_ACT_MAP = dict(
+_NORM_ACT_MAP: dict[str, type[nn.Module]] = dict(
     batchnorm=BatchNormAct2d,
     batchnorm2d=BatchNormAct2d,
     groupnorm=GroupNormAct,
@@ -38,7 +41,7 @@ _NORM_ACT_MAP = dict(
 )
 _NORM_ACT_TYPES = {m for n, m in _NORM_ACT_MAP.items()}
 # has act_layer arg to define act type
-_NORM_ACT_REQUIRES_ARG = {
+_NORM_ACT_REQUIRES_ARG: set[type[nn.Module]] = {
     BatchNormAct2d,
     GroupNormAct,
     LayerNormAct,
@@ -49,22 +52,30 @@ _NORM_ACT_REQUIRES_ARG = {
 
 
 def create_norm_act_layer(
-    layer_name, num_features, act_layer=None, apply_act=True, jit=False, **kwargs
-):
+    layer_name: str,
+    num_features: int,
+    act_layer: str | type[nn.Module] | None = None,
+    apply_act: bool = True,
+    jit: bool = False,
+    **kwargs,
+) -> nn.Module | None:
     layer = get_norm_act_layer(layer_name, act_layer=act_layer)
     layer_instance = layer(num_features, apply_act=apply_act, **kwargs)
-    if jit:
-        layer_instance = torch.jit.script(layer_instance)
     return layer_instance
 
 
-def get_norm_act_layer(norm_layer, act_layer=None):
+def get_norm_act_layer(
+    norm_layer: type | str | types.FunctionType | functools.partial | None,
+    act_layer: type | str | types.FunctionType | functools.partial | None = None,
+):
     if norm_layer is None:
         return None
+
     assert isinstance(norm_layer, (type, str, types.FunctionType, functools.partial))
     assert act_layer is None or isinstance(
         act_layer, (type, str, types.FunctionType, functools.partial)
     )
+
     norm_act_kwargs = {}
 
     # unbind partial fn, so args can be rebound later
@@ -73,8 +84,9 @@ def get_norm_act_layer(norm_layer, act_layer=None):
         norm_layer = norm_layer.func
 
     if isinstance(norm_layer, str):
-        if not norm_layer:
+        if norm_layer == "":
             return None
+
         layer_name = norm_layer.replace("_", "").lower().split("-")[0]
         norm_act_layer = _NORM_ACT_MAP[layer_name]
     elif norm_layer in _NORM_ACT_TYPES:

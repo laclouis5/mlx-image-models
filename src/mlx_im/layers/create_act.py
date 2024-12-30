@@ -67,7 +67,9 @@ for a in _ACT_LAYERS:
     a.setdefault("hardswish", a.get("hard_swish"))
 
 
-def get_act_fn(name: Union[Callable, str] = "relu"):
+def get_act_fn(
+    name: Union[type[nn.Module], str, None] = "relu",
+) -> Type[nn.Module] | None:
     if not name:
         return None
     if isinstance(name, Callable):
@@ -76,7 +78,9 @@ def get_act_fn(name: Union[Callable, str] = "relu"):
     return _ACT_FN_DEFAULT[name]
 
 
-def get_act_layer(name: Union[Type[nn.Module], str, None] = "relu"):
+def get_act_layer(
+    name: Union[Type[nn.Module], str, None] = "relu",
+) -> Type[nn.Module] | None:
     """Activation Layer Factory
     Fetching activation layers by name with this function allows export or torch script friendly
     functions to be returned dynamically based on current config.
@@ -94,7 +98,7 @@ def get_act_layer(name: Union[Type[nn.Module], str, None] = "relu"):
 
 def create_act_layer(
     name: Union[Type[nn.Module], str, None], inplace: bool | None = None, **kwargs
-):
+) -> nn.Module | None:
     act_layer = get_act_layer(name)
     if act_layer is None:
         return None

@@ -15,6 +15,7 @@ class FrozenBatchNorm2d(nn.BatchNorm):
         affine: bool = True,
     ):
         super().__init__(num_features, eps, momentum, affine, track_running_stats=True)
+        self.affine = affine
         self.freeze()
         self.eval()
 
