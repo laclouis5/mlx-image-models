@@ -157,11 +157,11 @@ def freeze_batch_norm_2d(module: nn.Module) -> nn.Module:
         res.affine = hasattr(module, "weight")
 
         if res.affine:
-            res.weight = module.weight
-            res.bias = module.bias
+            res.weight = mx.array(module.weight)
+            res.bias = mx.array(module.bias)
 
-        res.running_mean = module.running_mean
-        res.running_var = module.running_var
+        res.running_mean = mx.array(module.running_mean)
+        res.running_var = mx.array(module.running_var)
 
         res.eps = module.eps
         res.drop = module.drop
@@ -173,11 +173,11 @@ def freeze_batch_norm_2d(module: nn.Module) -> nn.Module:
         res.affine = hasattr(module, "weight")
 
         if res.affine:
-            res.weight = module.weight
-            res.bias = module.bias
+            res.weight = mx.array(module.weight)
+            res.bias = mx.array(module.bias)
 
-        res.running_mean = module.running_mean
-        res.running_var = module.running_var
+        res.running_mean = mx.array(module.running_mean)
+        res.running_var = mx.array(module.running_var)
 
         res.eps = module.eps
     else:
@@ -204,11 +204,11 @@ def unfreeze_batch_norm_2d(module: nn.Module) -> nn.Module:
         res = BatchNormAct2d(module.num_features, eps=module.eps)
 
         if module.affine:
-            res.weight = module.weight
-            res.bias = module.bias
+            res.weight = mx.array(module.weight)
+            res.bias = mx.array(module.bias)
 
-        res.running_mean = module.running_mean
-        res.running_var = module.running_var
+        res.running_mean = mx.array(module.running_mean)
+        res.running_var = mx.array(module.running_var)
 
         res.drop = module.drop
         res.act = module.act
@@ -216,11 +216,11 @@ def unfreeze_batch_norm_2d(module: nn.Module) -> nn.Module:
         res = nn.BatchNorm(module.num_features, eps=module.eps)
 
         if module.affine:
-            res.weight = module.weight
-            res.bias = module.bias
+            res.weight = mx.array(module.weight)
+            res.bias = mx.array(module.bias)
 
-        res.running_mean = module.running_mean
-        res.running_var = module.running_var
+        res.running_mean = mx.array(module.running_mean)
+        res.running_var = mx.array(module.running_var)
     else:
         # NOTE: MLX can store modules in containers such as `list`s and `dict`s, thus we have
         # to dig in those too.
