@@ -1,31 +1,29 @@
-"""EfficientNet, MobileNetV3, etc Builder
-
-Assembles EfficieNet and related network feature blocks from string definitions.
-Handles stride, dilation calculations, and selects feature extraction points.
-
-Hacked together by / Copyright 2019, Ross Wightman
-"""
-
-from typing import Callable, Optional
-
 import logging
 import math
 import re
 from copy import deepcopy
 from functools import partial
-from typing import Any, Dict, List
+from typing import Any, Callable, Dict, List, Optional
 
 import torch.nn as nn
 
-from timm.layers import (
+from ..layers import (
     CondConv2d,
-    get_condconv_initializer,
+    LayerType,
     get_act_layer,
     get_attn,
+    get_condconv_initializer,
     make_divisible,
-    LayerType,
 )
-from ._efficientnet_blocks import *
+from ._efficientnet_blocks import (
+    CondConvResidual,
+    ConvBnAct,
+    DepthwiseSeparableConv,
+    EdgeResidual,
+    InvertedResidual,
+    MobileAttention,
+    UniversalInvertedResidual,
+)
 from ._manipulate import named_modules
 
 __all__ = [

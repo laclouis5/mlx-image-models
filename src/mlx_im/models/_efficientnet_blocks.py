@@ -1,26 +1,21 @@
-"""EfficientNet, MobileNetV3, etc Blocks
-
-Hacked together by / Copyright 2019, Ross Wightman
-"""
-
 from typing import Callable, Dict, Optional, Type
 
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
 
-from timm.layers import (
-    create_conv2d,
-    DropPath,
-    make_divisible,
-    create_act_layer,
-    create_aa,
-    to_2tuple,
-    LayerType,
-    ConvNormAct,
-    get_norm_act_layer,
-    MultiQueryAttention2d,
+from ..layers import (
     Attention2d,
+    ConvNormAct,
+    DropPath,
+    LayerType,
+    MultiQueryAttention2d,
+    create_aa,
+    create_act_layer,
+    create_conv2d,
+    get_norm_act_layer,
+    make_divisible,
+    to_2tuple,
 )
 
 __all__ = [

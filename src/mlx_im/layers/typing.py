@@ -1,7 +1,6 @@
 from typing import Callable, Tuple, Type, Union
 
-import torch
+from mlx import nn
 
-
-LayerType = Union[str, Callable, Type[torch.nn.Module]]
+LayerType = Union[str, Callable, Type[nn.Module]]
 PadType = Union[str, int, Tuple[int, int]]

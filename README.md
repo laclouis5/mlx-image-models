@@ -16,4 +16,8 @@ Things that won't be supported:
 * Model training
 * Optimizers, losses, etc.
 * Export to ONNX, JIT, etc.
-* Other niche things from timm.
+* Other niche things from timm
+
+## TODO
+
+- [ ] Use FP32 for norms activations sensitive to low precision.
