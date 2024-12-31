@@ -1,69 +1,58 @@
-"""
-BlurPool layer inspired by
- - Kornia's Max_BlurPool2d
- - Making Convolutional Networks Shift-Invariant Again :cite:`zhang2019shiftinvar`
-
-Hacked together by Chris Ha and Ross Wightman
-"""
-
 from functools import partial
 from typing import Optional, Type
 
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
+import mlx.core as mx
 import numpy as np
+from mlx import nn
 
 from .padding import get_padding
 from .typing import LayerType
 
 
 class BlurPool2d(nn.Module):
-    r"""Creates a module that computes blurs and downsample a given feature map.
-    See :cite:`zhang2019shiftinvar` for more details.
-    Corresponds to the Downsample class, which does blurring and subsampling
-
-    Args:
-        channels = Number of input channels
-        filt_size (int): binomial filter size for blurring. currently supports 3 (default) and 5.
-        stride (int): downsampling filter stride
-
-    Returns:
-        torch.Tensor: the transformed tensor.
-    """
-
     def __init__(
         self,
         channels: Optional[int] = None,
         filt_size: int = 3,
         stride: int = 2,
         pad_mode: str = "reflect",
-    ) -> None:
-        super(BlurPool2d, self).__init__()
+    ):
+        super().__init__()
         assert filt_size > 1
         self.channels = channels
         self.filt_size = filt_size
         self.stride = stride
-        self.pad_mode = pad_mode
-        self.padding = [get_padding(filt_size, stride, dilation=1)] * 4
 
-        coeffs = torch.tensor(
+        # NOTE: This is not equivalent but may be sufficient.
+        self.pad_mode = "edge" if pad_mode == "reflect" else pad_mode
+        pad = get_padding(filt_size, stride, dilation=1)
+        self.padding = ((0, 0), (pad, pad), (pad, pad), (0, 0))
+
+        coeffs = mx.array(
             (np.poly1d((0.5, 0.5)) ** (self.filt_size - 1)).coeffs.astype(np.float32)
         )
-        blur_filter = (coeffs[:, None] * coeffs[None, :])[None, None, :, :]
-        if channels is not None:
-            blur_filter = blur_filter.repeat(self.channels, 1, 1, 1)
-        self.register_buffer("filt", blur_filter, persistent=False)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = F.pad(x, self.padding, mode=self.pad_mode)
+        blur_filter = (coeffs[:, None] * coeffs[None, :])[None, :, :, None]
+
+        if channels is not None:
+            blur_filter = mx.repeat(blur_filter, repeats=channels, axis=0)
+
+        # NOTE: Underscored so the array is not considered as a parameter by MLX.
+        self._filt = blur_filter
+
+    def __call__(self, x: mx.array) -> mx.array:
+        x = mx.pad(x, pad_width=self.padding, mode=self.pad_mode)
+        print(x.squeeze())
         if self.channels is None:
-            channels = x.shape[1]
-            weight = self.filt.expand(channels, 1, self.filt_size, self.filt_size)
+            channels = x.shape[-1]
+            weight = mx.broadcast_to(
+                self._filt, shape=(channels, self.filt_size, self.filt_size, 1)
+            )
         else:
             channels = self.channels
-            weight = self.filt
-        return F.conv2d(x, weight, stride=self.stride, groups=channels)
+            weight = self._filt
+
+        return mx.conv2d(x, weight, stride=self.stride, groups=channels)
 
 
 def create_aa(
@@ -73,7 +62,6 @@ def create_aa(
     enable: bool = True,
     noop: Optional[Type[nn.Module]] = nn.Identity,
 ) -> nn.Module:
-    """Anti-aliasing"""
     if not aa_layer or not enable:
         return noop() if noop is not None else None
 
@@ -88,8 +76,7 @@ def create_aa(
 
         else:
             assert False, f"Unknown anti-aliasing layer ({aa_layer})."
-
     try:
         return aa_layer(channels=channels, stride=stride)
-    except TypeError as e:
+    except TypeError:
         return aa_layer(stride)
