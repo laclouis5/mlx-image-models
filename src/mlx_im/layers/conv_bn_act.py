@@ -1,16 +1,12 @@
-"""Conv2d + BN + Act
-
-Hacked together by / Copyright 2020 Ross Wightman
-"""
-
 from typing import Any, Dict, Optional, Type
 
-from torch import nn as nn
+import mlx.core as mx
+from mlx import nn
 
-from .typing import LayerType, PadType
 from .blur_pool import create_aa
 from .create_conv2d import create_conv2d
 from .create_norm_act import get_norm_act_layer
+from .typing import LayerType, PadType
 
 
 class ConvNormAct(nn.Module):
@@ -26,7 +22,7 @@ class ConvNormAct(nn.Module):
         bias: bool = False,
         apply_norm: bool = True,
         apply_act: bool = True,
-        norm_layer: LayerType = nn.BatchNorm2d,
+        norm_layer: LayerType = nn.BatchNorm,
         act_layer: Optional[LayerType] = nn.ReLU,
         aa_layer: Optional[LayerType] = None,
         drop_layer: Optional[Type[nn.Module]] = None,
@@ -34,7 +30,8 @@ class ConvNormAct(nn.Module):
         norm_kwargs: Optional[Dict[str, Any]] = None,
         act_kwargs: Optional[Dict[str, Any]] = None,
     ):
-        super(ConvNormAct, self).__init__()
+        super().__init__()
+
         conv_kwargs = conv_kwargs or {}
         norm_kwargs = norm_kwargs or {}
         act_kwargs = act_kwargs or {}
@@ -65,24 +62,30 @@ class ConvNormAct(nn.Module):
                 **norm_kwargs,
             )
         else:
-            self.bn = nn.Sequential()
+            # NOTE: This will likely cause issues during weight loading. In MLX, layers
+            # in `Sequential` have integer names and cannot be assigned str names.
+            # This results in a path name of `bn.layers.0` instead of `bn.drop`. The later
+            # could be achieved in MLX `self.bn = {"drop": layer}` and then inplementing the sequential behavior manually, but there is no `Sequential` module in this setup and
+            # this would also cause issues for weights loading.
+            layers = []
             if drop_layer:
                 norm_kwargs["drop_layer"] = drop_layer
-                self.bn.add_module("drop", drop_layer())
+                layers.append(drop_layer())
+            self.bn = nn.Sequential(*layers)
 
         self.aa = create_aa(
             aa_layer, out_channels, stride=stride, enable=use_aa, noop=None
         )
 
     @property
-    def in_channels(self):
+    def in_channels(self) -> int:
         return self.conv.in_channels
 
     @property
-    def out_channels(self):
+    def out_channels(self) -> int:
         return self.conv.out_channels
 
-    def forward(self, x):
+    def __call__(self, x: mx.array) -> mx.array:
         x = self.conv(x)
         x = self.bn(x)
         aa = getattr(self, "aa", None)
