@@ -1,33 +1,27 @@
-"""AvgPool2d w/ Same Padding
+from typing import List
 
-Hacked together by / Copyright 2020 Ross Wightman
-"""
-
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from typing import List, Tuple, Optional
+import mlx.core as mx
+from mlx import nn
 
 from .helpers import to_2tuple
-from .padding import pad_same, get_padding_value
+from .padding import get_padding_value, pad_same
 
 
 def avg_pool2d_same(
-    x,
+    x: mx.array,
     kernel_size: List[int],
     stride: List[int],
     padding: List[int] = (0, 0),
     ceil_mode: bool = False,
     count_include_pad: bool = True,
-):
+) -> mx.array:
+    assert not ceil_mode, "`count_include_pad` not supported."
+    assert count_include_pad, "`count_include_pad` not supported."
     # FIXME how to deal with count_include_pad vs not for external padding?
-    x = pad_same(x, kernel_size, stride)
-    return F.avg_pool2d(x, kernel_size, stride, (0, 0), ceil_mode, count_include_pad)
+    return nn.AvgPool2d(kernel_size=kernel_size, stride=stride, padding=(0, 0))(x)
 
 
 class AvgPool2dSame(nn.AvgPool2d):
-    """Tensorflow like 'SAME' wrapper for 2D average pooling"""
-
     def __init__(
         self,
         kernel_size: int,
@@ -36,22 +30,15 @@ class AvgPool2dSame(nn.AvgPool2d):
         ceil_mode=False,
         count_include_pad=True,
     ):
-        kernel_size = to_2tuple(kernel_size)
-        stride = to_2tuple(stride)
-        super(AvgPool2dSame, self).__init__(
-            kernel_size, stride, (0, 0), ceil_mode, count_include_pad
-        )
+        assert not ceil_mode, "`count_include_pad` not supported."
+        assert count_include_pad, "`count_include_pad` not supported."
+        self.kernel_size = to_2tuple(kernel_size)
+        self.stride = to_2tuple(stride)
+        super().__init__(kernel_size, stride, (0, 0))
 
-    def forward(self, x):
+    def __call__(self, x: mx.array) -> mx.array:
         x = pad_same(x, self.kernel_size, self.stride)
-        return F.avg_pool2d(
-            x,
-            self.kernel_size,
-            self.stride,
-            self.padding,
-            self.ceil_mode,
-            self.count_include_pad,
-        )
+        return super().__call__(x)
 
 
 def max_pool2d_same(
@@ -62,31 +49,33 @@ def max_pool2d_same(
     dilation: List[int] = (1, 1),
     ceil_mode: bool = False,
 ):
+    assert not ceil_mode, "`count_include_pad` not supported."
+    assert dilation == (1, 1), "`dilation` other than 1 not supported."
     x = pad_same(x, kernel_size, stride, value=-float("inf"))
-    return F.max_pool2d(x, kernel_size, stride, (0, 0), dilation, ceil_mode)
+    return nn.MaxPool2d(kernel_size, stride, (0, 0))
 
 
 class MaxPool2dSame(nn.MaxPool2d):
-    """Tensorflow like 'SAME' wrapper for 2D max pooling"""
-
     def __init__(
         self, kernel_size: int, stride=None, padding=0, dilation=1, ceil_mode=False
     ):
-        kernel_size = to_2tuple(kernel_size)
-        stride = to_2tuple(stride)
+        assert not ceil_mode, "`count_include_pad` not supported."
+        assert dilation == 1, "`dilation` other than 1 not supported."
+
+        self.kernel_size = to_2tuple(kernel_size)
+        self.stride = to_2tuple(stride)
         dilation = to_2tuple(dilation)
-        super(MaxPool2dSame, self).__init__(
-            kernel_size, stride, (0, 0), dilation, ceil_mode
-        )
 
-    def forward(self, x):
+        super().__init__(kernel_size, stride, (0, 0))
+
+    def __call__(self, x: mx.array) -> mx.array:
         x = pad_same(x, self.kernel_size, self.stride, value=-float("inf"))
-        return F.max_pool2d(
-            x, self.kernel_size, self.stride, (0, 0), self.dilation, self.ceil_mode
-        )
+        return super().__call__(x)
 
 
-def create_pool2d(pool_type, kernel_size, stride=None, **kwargs):
+def create_pool2d(
+    pool_type: str, kernel_size: List[int], stride=None, **kwargs
+) -> nn.Module:
     stride = stride or kernel_size
     padding = kwargs.pop("padding", "")
     padding, is_dynamic = get_padding_value(
