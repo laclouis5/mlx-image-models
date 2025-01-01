@@ -1,28 +1,27 @@
-"""Attention Factory
-
-Hacked together by / Copyright 2021 Ross Wightman
-"""
-
-import torch
 from functools import partial
+
+from mlx import nn
 
 from .bottleneck_attn import BottleneckAttn
 from .cbam import CbamModule, LightCbamModule
-from .eca import EcaModule, CecaModule
+from .eca import CecaModule, EcaModule
 from .gather_excite import GatherExcite
 from .global_context import GlobalContext
 from .halo_attn import HaloAttn
 from .lambda_layer import LambdaLayer
-from .non_local_attn import NonLocalAttn, BatNonLocalAttn
+from .non_local_attn import BatNonLocalAttn, NonLocalAttn
 from .selective_kernel import SelectiveKernel
 from .split_attn import SplitAttn
-from .squeeze_excite import SEModule, EffectiveSEModule
+from .squeeze_excite import EffectiveSEModule, SEModule
 
 
-def get_attn(attn_type):
-    if isinstance(attn_type, torch.nn.Module):
+def get_attn(attn_type: str | type[nn.Module] | bool | None) -> type[nn.Module] | None:
+    if isinstance(attn_type, nn.Module):
+        # NOTE: Probably invalid. This fn should return a cls, not ane instance.
         return attn_type
+
     module_cls = None
+
     if attn_type:
         if isinstance(attn_type, str):
             attn_type = attn_type.lower()
@@ -71,9 +70,8 @@ def get_attn(attn_type):
             elif attn_type == "bat":
                 module_cls = BatNonLocalAttn
 
-            # Woops!
             else:
-                assert False, "Invalid attn module (%s)" % attn_type
+                raise AssertionError(f"Invalid attn module ({attn_type})")
         elif isinstance(attn_type, bool):
             if attn_type:
                 module_cls = SEModule
@@ -82,7 +80,9 @@ def get_attn(attn_type):
     return module_cls
 
 
-def create_attn(attn_type, channels, **kwargs):
+def create_attn(
+    attn_type: str | type[nn.Module] | None | bool, channels: int, **kwargs
+) -> nn.Module | None:
     module_cls = get_attn(attn_type)
     if module_cls is not None:
         # NOTE: it's expected the first (positional) argument of all attention layers is the # input channels
