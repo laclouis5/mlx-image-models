@@ -1,8 +1,7 @@
 from typing import List, Optional, Union
 
-import torch
-from torch import nn as nn
-from torch.nn import functional as F
+import mlx.core as mx
+from mlx import nn
 
 from .config import use_fused_attn
 from .create_conv2d import create_conv2d
@@ -11,19 +10,6 @@ from .pool2d_same import create_pool2d
 
 
 class MultiQueryAttentionV2(nn.Module):
-    """Multi Query Attention.
-
-    Fast Transformer Decoding: One Write-Head is All You Need
-    https://arxiv.org/pdf/1911.02150.pdf
-
-    This is an acceletor optimized version - removing multiple unneccessary
-    tensor transpose by re-arranging indices according to the following rules: 1)
-    contracted indices are at the end, 2) other indices have the same order in the
-    input and output tensores.
-
-    Compared to V1, this gives 3x speed up.
-    """
-
     def __init__(
         self,
         dim: int,
@@ -34,67 +20,61 @@ class MultiQueryAttentionV2(nn.Module):
         attn_drop: float = 0.0,
         proj_drop: float = 0.0,
     ):
-        """Initializer."""
         super().__init__()
-        dim_out = dim_out or dim
-        self.num_heads = num_heads
-        self.key_dim = key_dim
-        self.value_dim = value_dim
-        self.scale = key_dim**-0.5
+        dim_out = dim_out or dim  # O
+        self.num_heads = num_heads  # N
+        self.key_dim = key_dim  # K
+        self.value_dim = value_dim  # V
+        self.scale = key_dim**-0.5  # NOTE: Seems wrong, not applied.
 
-        self.query_proj = nn.Parameter(torch.randn([self.num_heads, self.key_dim, dim]))
-        self.key_proj = nn.Parameter(torch.randn([dim, self.key_dim]))
-        self.value_proj = nn.Parameter(torch.randn([dim, self.value_dim]))
+        self.query_proj = mx.random.normal((self.num_heads, self.key_dim, dim))
+        self.key_proj = mx.random.normal((dim, self.key_dim))
+        self.value_proj = mx.random.normal((dim, self.value_dim))
+        self.out_proj = mx.random.normal((dim_out, self.num_heads, self.value_dim))
+
         self.attn_drop = nn.Dropout(attn_drop)
-        self.out_proj = nn.Parameter(
-            torch.randn([dim_out, self.num_heads, self.value_dim])
-        )
         self.proj_drop = nn.Dropout(proj_drop)
 
-    def _reshape_input(self, t):
-        """Reshapes a tensor to three dimensions, keeping the first and last."""
-        s = t.shape
-        # Propagate the shape statically where possible.
-        # num = t.shape[1:-1].numel()
-        # return t.reshape(s[0], num, s[-1])
-        return t.reshape(s[0], s[1], -1).transpose(1, 2)
+    def __call__(self, x: mx.array, m: Optional[mx.array] = None) -> mx.array:
+        b, h, w, c = x.shape  # (B, H, W, D)
 
-    def forward(self, x, m: Optional[torch.Tensor] = None):
-        """Run layer computation."""
-        s = x.shape
-        m = m or x
+        reshaped_x = x.reshape(b, -1, c)  # (B, H1*W1, D)
 
-        reshaped_x = self._reshape_input(x)
-        reshaped_m = self._reshape_input(m)
+        # (B, H2*W2, D)
+        if m is not None:
+            reshaped_m = m.reshape(b, -1, m.shape[-1])
+        else:
+            reshaped_m = reshaped_x
 
-        q = torch.einsum("bnd,hkd->bnhk", reshaped_x, self.query_proj)
-        k = torch.einsum("bmd,dk->bmk", reshaped_m, self.key_proj)
+        # (B, H1*W1, D) (N, K, D) -> (B, H1*W1, N, K)
+        q = mx.einsum("bnd,hkd->bnhk", reshaped_x, self.query_proj)
 
-        attn = torch.einsum("bnhk,bmk->bnhm", q, k)
-        attn = attn.softmax(dim=-1)
+        # (B, H2*W2, D) (D, K) -> (B, H2*W2, K)
+        k = mx.einsum("bmd,dk->bmk", reshaped_m, self.key_proj)
+
+        # NOTE: Timm implementation does not use the scale: doing the same here.
+        # (B, H1*W1, N, K) (B, H2*W2, K) -> (B, H1*W1, N, H2*W2)
+        attn = mx.einsum("bnhk,bmk->bnhm", q, k)
+
+        # (B, H1*W1, N, H2*W2)
+        attn = mx.softmax(attn, axis=-1)
         attn = self.attn_drop(attn)
 
-        v = torch.einsum("bmd,dv->bmv", reshaped_m, self.value_proj)
-        o = torch.einsum("bnhm,bmv->bnhv", attn, v)
-        result = torch.einsum("bnhv,dhv->bnd", o, self.out_proj)
+        # (B, H2*W2, D) (D, V) -> (B, H2*W2, V)
+        v = mx.einsum("bmd,dv->bmv", reshaped_m, self.value_proj)
+
+        # (B, H1*W1, N, H2*W2) (B, H2*W2, V) -> (B, H1*W1, N, V)
+        o = mx.einsum("bnhm,bmv->bnhv", attn, v)
+
+        # (B, H1*W1, N, V) (O, N, V) -> (B, H1*W1, O)
+        result = mx.einsum("bnhv,dhv->bnd", o, self.out_proj)
         result = self.proj_drop(result)
-        return result.reshape(s)
+
+        # (B, H1, W1, O)
+        return result.reshape(b, h, w, -1)
 
 
 class MultiQueryAttention2d(nn.Module):
-    """Multi Query Attention with spatial downsampling.
-
-     3 parameters are introduced for the spatial downsampling:
-     1. kv_stride: downsampling factor on Key and Values only.
-     2. query_strides: horizontal & vertical strides on Query only.
-
-    This is an optimized version.
-    1. Projections in Attention is explict written out as 1x1 Conv2D.
-    2. Additional reshapes are introduced to bring a up to 3x speed up.
-    """
-
-    fused_attn: torch.jit.Final[bool]
-
     def __init__(
         self,
         dim: int,
@@ -109,24 +89,14 @@ class MultiQueryAttention2d(nn.Module):
         padding: Union[str, int, List[int]] = "",
         attn_drop: float = 0.0,
         proj_drop: float = 0.0,
-        norm_layer: nn.Module = nn.BatchNorm2d,
+        norm_layer: nn.Module = nn.BatchNorm,
         use_bias: bool = False,
     ):
-        """Initializer.
-
-        Args:
-          num_heads: Number of attention heads.
-          key_dim: Size of the attention key dimension.
-          value_dim: Size of the attention value dimension.
-          query_strides: Vertical stride size for query only.
-          kv_stride: Key and value stride size.
-          dw_kernel_size: Spatial dimension of the depthwise kernel.
-        """
         super().__init__()
-        dim_out = dim_out or dim
-        self.num_heads = num_heads
-        self.key_dim = key_dim or dim // num_heads
-        self.value_dim = value_dim or dim // num_heads
+        dim_out = dim_out or dim  # O
+        self.num_heads = num_heads  # N
+        self.key_dim = key_dim or dim // num_heads  # K
+        self.value_dim = value_dim or dim // num_heads  # V
         self.query_strides = to_2tuple(query_strides)
         self.kv_stride = kv_stride
         self.has_query_strides = any([s > 1 for s in self.query_strides])
@@ -134,12 +104,10 @@ class MultiQueryAttention2d(nn.Module):
         self.fused_attn = use_fused_attn()
         self.drop = attn_drop
 
-        self.query = nn.Sequential()
+        query = []
         if self.has_query_strides:
-            # FIXME dilation
             if padding == "same":
-                self.query.add_module(
-                    "down_pool",
+                query.append(
                     create_pool2d(
                         "avg",
                         kernel_size=self.query_strides,
@@ -147,13 +115,9 @@ class MultiQueryAttention2d(nn.Module):
                     ),
                 )
             else:
-                # no pad if not 'same' as kern=stride=even
-                self.query.add_module(
-                    "down_pool", nn.AvgPool2d(kernel_size=query_strides)
-                )
-            self.query.add_module("norm", norm_layer(dim))
-        self.query.add_module(
-            "proj",
+                query.append(nn.AvgPool2d(kernel_size=query_strides))
+            query.append(norm_layer(dim))
+        query.append(
             create_conv2d(
                 dim,
                 self.num_heads * self.key_dim,
@@ -161,11 +125,11 @@ class MultiQueryAttention2d(nn.Module):
                 bias=use_bias,
             ),
         )
+        self.query = nn.Sequential(query)
 
-        self.key = nn.Sequential()
+        key = []
         if kv_stride > 1:
-            self.key.add_module(
-                "down_conv",
+            key.append(
                 create_conv2d(
                     dim,
                     dim,
@@ -176,9 +140,8 @@ class MultiQueryAttention2d(nn.Module):
                     depthwise=True,
                 ),
             )
-            self.key.add_module("norm", norm_layer(dim))
-        self.key.add_module(
-            "proj",
+            key.append(norm_layer(dim))
+        key.append(
             create_conv2d(
                 dim,
                 self.key_dim,
@@ -187,11 +150,11 @@ class MultiQueryAttention2d(nn.Module):
                 bias=use_bias,
             ),
         )
+        self.key = nn.Sequential(key)
 
-        self.value = nn.Sequential()
+        value = []
         if kv_stride > 1:
-            self.value.add_module(
-                "down_conv",
+            value.append(
                 create_conv2d(
                     dim,
                     dim,
@@ -202,9 +165,8 @@ class MultiQueryAttention2d(nn.Module):
                     depthwise=True,
                 ),
             )
-            self.value.add_module("norm", norm_layer(dim))
-        self.value.add_module(
-            "proj",
+            value.append(norm_layer(dim))
+        value.append(
             create_conv2d(
                 dim,
                 self.value_dim,
@@ -212,21 +174,20 @@ class MultiQueryAttention2d(nn.Module):
                 bias=use_bias,
             ),
         )
+        self.value = nn.Sequential(value)
 
         self.attn_drop = nn.Dropout(attn_drop)
 
-        self.output = nn.Sequential()
+        output = []
         if self.has_query_strides:
-            self.output.add_module(
-                "upsample",
+            output.append(
                 nn.Upsample(
                     scale_factor=self.query_strides,
                     mode="bilinear",
                     align_corners=False,
                 ),
             )
-        self.output.add_module(
-            "proj",
+        output.append(
             create_conv2d(
                 self.value_dim * self.num_heads,
                 dim_out,
@@ -234,30 +195,20 @@ class MultiQueryAttention2d(nn.Module):
                 bias=use_bias,
             ),
         )
-        self.output.add_module("drop", nn.Dropout(proj_drop))
+        output.append(nn.Dropout(proj_drop))
+        self.output = nn.Sequential(output)
 
         self.einsum = False
 
-    def init_weights(self):
-        # using xavier appeared to improve stability for mobilenetv4 hybrid w/ this layer
-        nn.init.xavier_uniform_(self.query.proj.weight)
-        nn.init.xavier_uniform_(self.key.proj.weight)
-        nn.init.xavier_uniform_(self.value.proj.weight)
-        if self.kv_stride > 1:
-            nn.init.xavier_uniform_(self.key.down_conv.weight)
-            nn.init.xavier_uniform_(self.value.down_conv.weight)
-        nn.init.xavier_uniform_(self.output.proj.weight)
-
-    def _reshape_input(self, t: torch.Tensor):
-        """Reshapes a tensor to three dimensions, keeping the batch and channels."""
+    def _reshape_input(self, t: mx.array) -> mx.array:
         s = t.shape
-        t = t.reshape(s[0], s[1], -1).transpose(1, 2)
+        t = t.reshape(s[0], -1, s[1])  # (B, H*W, C)
         if self.einsum:
             return t
         else:
-            return t.unsqueeze(1).contiguous()
+            return t[:, None, ...]  # (B, 1, H*W, C)
 
-    def _reshape_projected_query(self, t: torch.Tensor, num_heads: int, key_dim: int):
+    def _reshape_projected_query(self, t: mx.array, num_heads: int, key_dim: int):
         """Reshapes projected query: [b, n, n, h x k] -> [b, n x n, h, k]."""
         s = t.shape
         t = t.reshape(s[0], num_heads, key_dim, -1)
@@ -266,7 +217,7 @@ class MultiQueryAttention2d(nn.Module):
         else:
             return t.transpose(-1, -2).contiguous()
 
-    def _reshape_output(self, t: torch.Tensor, num_heads: int, h_px: int, w_px: int):
+    def _reshape_output(self, t: mx.array, num_heads: int, h_px: int, w_px: int):
         """Reshape output:[b, n x n x h, k] -> [b, n, n, hk]."""
         s = t.shape
         feat_dim = s[-1] * num_heads
@@ -274,9 +225,9 @@ class MultiQueryAttention2d(nn.Module):
             t = t.transpose(1, 2)
         return t.reshape(s[0], h_px, w_px, feat_dim).permute(0, 3, 1, 2).contiguous()
 
-    def forward(self, x, attn_mask: Optional[torch.Tensor] = None):
+    def __call__(self, x: mx.array, attn_mask: Optional[mx.array] = None) -> mx.array:
         """Run layer computation."""
-        B, C, H, W = s = x.shape
+        _, _, H, W = x.shape
 
         q = self.query(x)
         # desired q shape: [b, h, k, n x n] - [b, l, h, k]
@@ -294,16 +245,16 @@ class MultiQueryAttention2d(nn.Module):
         # desired k shape: [b, m x m, k]
         # desired logits shape: [b, n x n, h, m x m]
         if self.einsum:
-            attn = torch.einsum("blhk,bpk->blhp", q, k) * self.scale
+            attn = mx.einsum("blhk,bpk->blhp", q, k) * self.scale
             if attn_mask is not None:
                 # NOTE: assumes mask is float and in correct shape
                 attn = attn + attn_mask
             attn = attn.softmax(dim=-1)
             attn = self.attn_drop(attn)
-            o = torch.einsum("blhp,bpk->blhk", attn, v)
+            o = mx.einsum("blhp,bpk->blhk", attn, v)
         else:
             if self.fused_attn:
-                o = F.scaled_dot_product_attention(
+                o = scaled_dot_product_attention(
                     q,
                     k,
                     v,
@@ -329,10 +280,6 @@ class MultiQueryAttention2d(nn.Module):
 
 
 class Attention2d(nn.Module):
-    fused_attn: torch.jit.Final[bool]
-
-    """ multi-head attention for 2D NCHW tensors"""
-
     def __init__(
         self,
         dim: int,
@@ -344,13 +291,14 @@ class Attention2d(nn.Module):
         attn_drop: float = 0.0,
         proj_drop: float = 0.0,
     ):
+        assert attn_drop == 0.0, "Attention dropout not supported"
         super().__init__()
         dim_out = dim_out or dim
-        dim_attn = dim_out if expand_first else dim
-        self.num_heads = num_heads
-        self.dim_head = dim_attn // num_heads
+        dim_attn = dim_out if expand_first else dim  # E
+        self.num_heads = num_heads  # N
+        self.dim_head = dim_attn // num_heads  # E / N
         self.head_first = head_first
-        self.scale = num_heads**-0.5
+        self.scale = self.dim_head**-0.5  # NOTE: The scale defined in timm is wrong.
         self.fused_attn = use_fused_attn()
 
         self.qkv = nn.Conv2d(dim, dim_attn * 3, 1, bias=bias)
@@ -358,42 +306,34 @@ class Attention2d(nn.Module):
         self.proj = nn.Conv2d(dim_attn, dim_out, 1, bias=bias)
         self.proj_drop = nn.Dropout(proj_drop)
 
-    def forward(self, x, attn_mask: Optional[torch.Tensor] = None):
-        B, C, H, W = x.shape
+    def __call__(self, x: mx.array, attn_mask: Optional[mx.array] = None) -> mx.array:
+        B, H, W, _ = x.shape
 
         if self.head_first:
             q, k, v = (
-                self.qkv(x)
-                .view(B, self.num_heads, self.dim_head * 3, -1)
-                .chunk(3, dim=2)
+                self.qkv(x)  # (B, H, W, 3*E)
+                .reshape(B, -1, self.num_heads, self.dim_head * 3)  # (B, H*W, N, 3*E/N)
+                .split(3, axis=-1)  # 3 * (B, H*W, N, E/N)
             )
         else:
             q, k, v = (
-                self.qkv(x).reshape(B, 3, self.num_heads, self.dim_head, -1).unbind(1)
+                self.qkv(x)  # (B, H, W, 3*E)
+                .reshape(B, -1, 3, self.num_heads, self.dim_head)  # (B, H*W, N, 3*E/N)
+                .split(3, axis=2)  # 3 * (B, H*W, N, E/N)
             )
 
-        if self.fused_attn:
-            x = (
-                torch.nn.functional.scaled_dot_product_attention(
-                    q.transpose(-1, -2).contiguous(),
-                    k.transpose(-1, -2).contiguous(),
-                    v.transpose(-1, -2).contiguous(),
-                    attn_mask=attn_mask,
-                    dropout_p=self.attn_drop.p if self.training else 0.0,
-                )
-                .transpose(-1, -2)
-                .reshape(B, -1, H, W)
-            )
-        else:
-            q = q * self.scale
-            attn = q.transpose(-2, -1) @ k
-            if attn_mask is not None:
-                # NOTE: assumes mask is float and in correct shape
-                attn = attn + attn_mask
-            attn = attn.softmax(dim=-1)
-            attn = self.attn_drop(attn)
-            x = (v @ attn.transpose(-2, -1)).view(B, -1, H, W)
+            q, k, v = [o.squeeze(2) for o in [q, k, v]]
 
+        # (B, N, H*W, E/N)
+        x = mx.fast.scaled_dot_product_attention(
+            q=q.transpose(0, 2, 1, 3),
+            k=k.transpose(0, 2, 1, 3),
+            v=v.transpose(0, 2, 1, 3),
+            scale=self.scale,
+            mask=attn_mask,
+        )
+
+        x = x.transpose(0, 2, 1, 3).reshape(B, H, W, -1)
         x = self.proj(x)
         x = self.proj_drop(x)
         return x
