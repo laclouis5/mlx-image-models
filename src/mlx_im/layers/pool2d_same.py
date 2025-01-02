@@ -17,7 +17,7 @@ def avg_pool2d_same(
 ) -> mx.array:
     assert not ceil_mode, "`count_include_pad` not supported."
     assert count_include_pad, "`count_include_pad` not supported."
-    # FIXME how to deal with count_include_pad vs not for external padding?
+    # FIXME: how to deal with count_include_pad vs not for external padding?
     return nn.AvgPool2d(kernel_size=kernel_size, stride=stride, padding=(0, 0))(x)
 
 

@@ -1,7 +1,10 @@
+from typing import Optional, Sequence, Tuple, Union
+
 import mlx.core as mx
 from mlx import nn
+from mlx.nn.layers.pooling import _Pool2d
 
-from .helpers import to_2tuple, _int_tuple_2_t
+from .helpers import _int_tuple_2_t, to_2tuple
 
 
 class Flatten(nn.Module):
@@ -44,3 +47,36 @@ class AdaptiveMaxPool2d(nn.Module):
 
     def __call__(self, x: mx.array) -> mx.array:
         return adaptive_max_pool2d(x, output_size=self.output_size)
+
+
+def _nanmean(
+    v: mx.array,
+    axis: int | Sequence[int] | None = None,
+    keepdims: bool = False,
+    *,
+    stream: mx.Stream | mx.Device | None = None,
+) -> mx.array:
+    is_nan = mx.isnan(v)
+    v = mx.nan_to_num(v)
+    s = v.sum(axis=axis, keepdims=keepdims, stream=stream)
+    c = (~is_nan).sum(axis=axis, keepdims=keepdims, stream=stream)
+    return s / c
+
+
+class AvgPool2d(_Pool2d):
+    """AvgPool2d with support for `count_include_pad`."""
+
+    def __init__(
+        self,
+        kernel_size: Union[int, Tuple[int, int]],
+        stride: Optional[Union[int, Tuple[int, int]]] = None,
+        padding: Optional[Union[int, Tuple[int, int]]] = 0,
+        count_include_pad: bool = True,
+    ):
+        self._count_include_pad = count_include_pad
+        need_padding = padding is not None and padding != 0 and padding != (0, 0)
+
+        if self._count_include_pad or not need_padding:
+            super().__init__(mx.mean, 0, kernel_size, stride, padding)
+        else:
+            super().__init__(_nanmean, mx.nan, kernel_size, stride, padding)

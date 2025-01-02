@@ -1,58 +1,45 @@
-"""Gather-Excite Attention Block
-
-Paper: `Gather-Excite: Exploiting Feature Context in CNNs` - https://arxiv.org/abs/1810.12348
-
-Official code here, but it's only partial impl in Caffe: https://github.com/hujie-frank/GENet
-
-I've tried to support all of the extent both w/ and w/o params. I don't believe I've seen another
-impl that covers all of the cases.
-
-NOTE: extent=0 + extra_params=False is equivalent to Squeeze-and-Excitation
-
-Hacked together by / Copyright 2021 Ross Wightman
-"""
-
 import math
+from typing import Callable
 
-import torch.nn.functional as F
-from torch import nn as nn
+import mlx.core as mx
+from mlx import nn
 
 from .create_act import create_act_layer, get_act_layer
 from .create_conv2d import create_conv2d
 from .helpers import make_divisible
 from .mlp import ConvMlp
+from .mlx_layers import AvgPool2d
 
 
 class GatherExcite(nn.Module):
-    """Gather-Excite Attention Module"""
-
     def __init__(
         self,
-        channels,
-        feat_size=None,
-        extra_params=False,
-        extent=0,
-        use_mlp=True,
-        rd_ratio=1.0 / 16,
-        rd_channels=None,
-        rd_divisor=1,
-        add_maxpool=False,
-        act_layer=nn.ReLU,
-        norm_layer=nn.BatchNorm2d,
-        gate_layer="sigmoid",
+        channels: int,
+        feat_size: int | None = None,
+        extra_params: bool = False,
+        extent: int = 0,
+        use_mlp: bool = True,
+        rd_ratio: float = 1.0 / 16,
+        rd_channels: int | None = None,
+        rd_divisor: int = 1,
+        add_maxpool: bool = False,
+        act_layer: Callable[[], nn.Module] = nn.ReLU,
+        norm_layer: Callable[[int], nn.Module] | None = nn.BatchNorm,
+        gate_layer: str | type[nn.Module] | None = "sigmoid",
     ):
-        super(GatherExcite, self).__init__()
+        super().__init__()
+
         self.add_maxpool = add_maxpool
         act_layer = get_act_layer(act_layer)
         self.extent = extent
+
         if extra_params:
-            self.gather = nn.Sequential()
+            gather = []
             if extent == 0:
                 assert (
                     feat_size is not None
                 ), "spatial feature size must be specified for global extent w/ params"
-                self.gather.add_module(
-                    "conv1",
+                gather.append(
                     create_conv2d(
                         channels,
                         channels,
@@ -61,22 +48,23 @@ class GatherExcite(nn.Module):
                         depthwise=True,
                     ),
                 )
-                if norm_layer:
-                    self.gather.add_module(f"norm1", nn.BatchNorm2d(channels))
+                if norm_layer is not None:
+                    gather.append(norm_layer(channels))
             else:
                 assert extent % 2 == 0
                 num_conv = int(math.log2(extent))
                 for i in range(num_conv):
-                    self.gather.add_module(
-                        f"conv{i + 1}",
+                    gather.append(
                         create_conv2d(
                             channels, channels, kernel_size=3, stride=2, depthwise=True
                         ),
                     )
                     if norm_layer:
-                        self.gather.add_module(f"norm{i + 1}", nn.BatchNorm2d(channels))
+                        gather.append(norm_layer(channels))
                     if i != num_conv - 1:
-                        self.gather.add_module(f"act{i + 1}", act_layer(inplace=True))
+                        gather.append(act_layer(inplace=True))
+
+            self.gather = nn.Sequential(*gather)
         else:
             self.gather = None
             if self.extent == 0:
@@ -98,31 +86,30 @@ class GatherExcite(nn.Module):
         )
         self.gate = create_act_layer(gate_layer)
 
-    def forward(self, x):
-        size = x.shape[-2:]
+    def __call__(self, x: mx.array) -> mx.array:
         if self.gather is not None:
             x_ge = self.gather(x)
         else:
             if self.extent == 0:
-                # global extent
-                x_ge = x.mean(dim=(2, 3), keepdims=True)
+                x_ge = x.mean(axis=(1, 2), keepdims=True)
                 if self.add_maxpool:
-                    # experimental codepath, may remove or change
-                    x_ge = 0.5 * x_ge + 0.5 * x.amax((2, 3), keepdim=True)
+                    x_ge = 0.5 * x_ge + 0.5 * x.max((1, 2), keepdims=True)
             else:
-                x_ge = F.avg_pool2d(
-                    x,
+                x_ge = AvgPool2d(
                     kernel_size=self.gk,
                     stride=self.gs,
                     padding=self.gk // 2,
                     count_include_pad=False,
-                )
+                )(x)
                 if self.add_maxpool:
-                    # experimental codepath, may remove or change
-                    x_ge = 0.5 * x_ge + 0.5 * F.max_pool2d(
-                        x, kernel_size=self.gk, stride=self.gs, padding=self.gk // 2
-                    )
+                    x_ge = 0.5 * x_ge + 0.5 * nn.MaxPool2d(
+                        kernel_size=self.gk, stride=self.gs, padding=self.gk // 2
+                    )(x)
+
         x_ge = self.mlp(x_ge)
-        if x_ge.shape[-1] != 1 or x_ge.shape[-2] != 1:
-            x_ge = F.interpolate(x_ge, size=size)
+
+        if x_ge.shape[1] != 1 or x_ge.shape[2] != 1:
+            scale_factor = x.shape[1] // x_ge.shape[1], x.shape[2] // x_ge.shape[2]
+            x_ge = nn.Upsample(scale_factor=scale_factor)(x_ge)
+
         return x * self.gate(x_ge)
