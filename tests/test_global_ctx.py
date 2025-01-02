@@ -19,10 +19,10 @@ def test_global_ctx(fuse_add, fuse_scale):
     x_torch = U.mlx_to_torch_2d(x_mlx)
 
     mod_mlx = mlx_m.GlobalContext(
-        channels=128, fuse_add=fuse_scale, fuse_scale=fuse_scale
+        channels=128, fuse_add=fuse_add, fuse_scale=fuse_scale
     )
     mod_timm = timm_m.GlobalContext(
-        channels=128, fuse_add=fuse_scale, fuse_scale=fuse_scale
+        channels=128, fuse_add=fuse_add, fuse_scale=fuse_scale
     )
 
     W.transfer_weights(mod_timm, mod_mlx)
