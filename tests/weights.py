@@ -13,20 +13,15 @@ def transfer_weights(torch_module: nn_torch.Module, mlx_module: nn_mlx.Module):
 
     if isinstance(torch_module, L_timm.CondConv2d):
         assert isinstance(mlx_module, L_mlx.CondConv2d)
-        mlx_module.weight = mx.array(
-            torch_module.weight.reshape(
-                torch_module.num_experts,
-                torch_module.out_channels,
-                torch_module.in_channels // torch_module.groups,
-                torch_module.kernel_size[0],
-                torch_module.kernel_size[1],
-            )
-            .permute(0, 1, 3, 4, 2)
-            .reshape(torch_module.num_experts, -1)
-            .detach()
-            .numpy()
+        weight = torch_module.weight.reshape(
+            torch_module.num_experts,
+            torch_module.out_channels,
+            torch_module.in_channels // torch_module.groups,
+            torch_module.kernel_size[0],
+            torch_module.kernel_size[1],
         )
-
+        weight = weight.permute(0, 1, 3, 4, 2).reshape(torch_module.num_experts, -1)
+        mlx_module.weight = mx.array(weight.detach().numpy())
         if torch_module.bias is not None:
             mlx_module.bias = mx.array(torch_module.bias.detach().numpy())
 
@@ -41,8 +36,15 @@ def transfer_weights(torch_module: nn_torch.Module, mlx_module: nn_mlx.Module):
         if torch_module.bias is not None:
             mlx_module.bias = mx.array(torch_module.bias.detach().numpy())
 
+    elif isinstance(torch_module, nn_torch.Conv1d):
+        assert isinstance(mlx_module, nn_mlx.Conv1d)
+        weight = mx.array(torch_module.weight.detach().numpy())
+        mlx_module.weight = weight.transpose(0, 2, 1)
+        if torch_module.bias is not None:
+            mlx_module.bias = mx.array(torch_module.bias.detach().numpy())
+
     elif isinstance(torch_module, nn_torch.Linear):
-        assert isinstance(mlx_module, nn_mlx.Conv2d)
+        assert isinstance(mlx_module, nn_mlx.Linear)
         mlx_module.weight = mx.array(torch_module.weight.detach().numpy())
         if torch_module.bias is not None:
             mlx_module.bias = mx.array(torch_module.bias.detach().numpy())
