@@ -11,7 +11,12 @@ from . import utils as U
 def transfer_weights(torch_module: nn_torch.Module, mlx_module: nn_mlx.Module):
     """Recursively transfer weights from a Torch module to a MLX module."""
 
-    if isinstance(torch_module, L_timm.CondConv2d):
+    if isinstance(torch_module, L_timm.mlp.GlobalResponseNorm):
+        assert isinstance(mlx_module, L_mlx.mlp.GlobalResponseNorm)
+        mlx_module.weight = mx.array(torch_module.weight.detach().numpy())
+        mlx_module.bias = mx.array(torch_module.bias.detach().numpy())
+
+    elif isinstance(torch_module, L_timm.CondConv2d):
         assert isinstance(mlx_module, L_mlx.CondConv2d)
         weight = torch_module.weight.reshape(
             torch_module.num_experts,
@@ -70,3 +75,25 @@ def transfer_weights(torch_module: nn_torch.Module, mlx_module: nn_mlx.Module):
 
     else:
         raise ValueError(f"Module '{type(torch_module)}' not supported.")
+
+
+def transfer_params(torch_module: nn_torch.Module, mlx_module: nn_mlx.Module):
+    subp_t = dict(torch_module.named_parameters())
+
+    if len(subp_t) == 0:
+        return
+
+    for name, p_t in subp_t.items():
+        assert name in mlx_module
+        assert p_t.ndim == mlx_module[name]
+
+        if p_t.ndim == 1 or p_t.ndim == 2:
+            mlx_module[name] = mx.array(p_t.detach().numpy())
+        elif p_t.ndim == 3:
+            weight = mx.array(p_t.detach().numpy())
+            mlx_module[name] = weight.transpose(0, 2, 1)
+        elif p_t.ndim == 4:
+            weight = mx.array(p_t.detach().numpy())
+            mlx_module[name] = weight.transpose(0, 2, 3, 1)
+        else:
+            raise ValueError(f"Paramter with {p_t.ndim} dimensions not supported.")
