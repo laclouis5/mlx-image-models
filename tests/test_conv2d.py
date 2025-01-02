@@ -132,7 +132,7 @@ def test_conv2d_cond(kernel_size, padding, stride, dilation, bias):
     x_mlx = U.sample_mlx_array_2d(shape=(2, 512, 768, 4))
     x_torch = U.mlx_to_torch_2d(x_mlx)
 
-    r_mlx = mx.sigmoid(mx.random.normal((2, 4)))
+    r_mlx = mx.sigmoid(mx.random.normal((2, 2)))
     r_torch = torch.from_numpy(np.array(r_mlx))
 
     mlx_conv = create_conv2d(
@@ -143,7 +143,7 @@ def test_conv2d_cond(kernel_size, padding, stride, dilation, bias):
         stride=stride,
         dilation=dilation,
         bias=bias,
-        num_experts=4,
+        num_experts=2,
     )
     timm_conv = create_conv2d_torch(
         4,
@@ -153,14 +153,14 @@ def test_conv2d_cond(kernel_size, padding, stride, dilation, bias):
         stride=stride,
         dilation=dilation,
         bias=bias,
-        num_experts=4,
+        num_experts=2,
     )
 
     # NOTE: CondConv2d needs special care to convert the weights from timm to MLX.
     mlx_conv.weight = mx.array(
-        timm_conv.weight.reshape(4, 16, 4, kernel_size, kernel_size)
+        timm_conv.weight.reshape(2, 16, 4, kernel_size, kernel_size)
         .permute(0, 1, 3, 4, 2)
-        .reshape(4, -1)
+        .reshape(2, -1)
         .detach()
         .numpy()
     )
