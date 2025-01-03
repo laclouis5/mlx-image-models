@@ -187,10 +187,6 @@ class BilinearAttnTransform(nn.Module):
 
 
 class BatNonLocalAttn(nn.Module):
-    """BAT
-    Adapted from: https://github.com/BA-Transform/BAT-Image-Classification
-    """
-
     def __init__(
         self,
         in_channels: int,
