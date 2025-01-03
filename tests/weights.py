@@ -12,12 +12,14 @@ def transfer_weights(torch_module: nn_torch.Module, mlx_module: nn_mlx.Module):
     """Recursively transfer weights from a Torch module to a MLX module."""
 
     if isinstance(torch_module, L_timm.mlp.GlobalResponseNorm):
-        assert isinstance(mlx_module, L_mlx.mlp.GlobalResponseNorm)
+        assert isinstance(
+            mlx_module, L_mlx.mlp.GlobalResponseNorm
+        ), f"{type(mlx_module)}"
         mlx_module.weight = mx.array(torch_module.weight.detach().numpy())
         mlx_module.bias = mx.array(torch_module.bias.detach().numpy())
 
     elif isinstance(torch_module, L_timm.CondConv2d):
-        assert isinstance(mlx_module, L_mlx.CondConv2d)
+        assert isinstance(mlx_module, L_mlx.CondConv2d), f"{type(mlx_module)}"
         weight = torch_module.weight.reshape(
             torch_module.num_experts,
             torch_module.out_channels,
@@ -31,61 +33,56 @@ def transfer_weights(torch_module: nn_torch.Module, mlx_module: nn_mlx.Module):
             mlx_module.bias = mx.array(torch_module.bias.detach().numpy())
 
     elif isinstance(torch_module, L_timm.MixedConv2d):
-        assert isinstance(mlx_module, L_mlx.MixedConv2d)
+        assert isinstance(mlx_module, L_mlx.MixedConv2d), f"{type(mlx_module)}"
         for mod_t, mod_m in zip(torch_module.values(), mlx_module.layers):
             transfer_weights(mod_t, mod_m)
 
     elif isinstance(torch_module, nn_torch.Conv2d):
-        assert isinstance(mlx_module, nn_mlx.Conv2d)
+        assert isinstance(mlx_module, nn_mlx.Conv2d), f"{type(mlx_module)}"
         mlx_module.weight = U.torch_to_mlx_2d(torch_module.weight)
         if torch_module.bias is not None:
             mlx_module.bias = mx.array(torch_module.bias.detach().numpy())
 
     elif isinstance(torch_module, nn_torch.Conv1d):
-        assert isinstance(mlx_module, nn_mlx.Conv1d)
+        assert isinstance(mlx_module, nn_mlx.Conv1d), f"{type(mlx_module)}"
         weight = mx.array(torch_module.weight.detach().numpy())
         mlx_module.weight = weight.transpose(0, 2, 1)
         if torch_module.bias is not None:
             mlx_module.bias = mx.array(torch_module.bias.detach().numpy())
 
     elif isinstance(torch_module, nn_torch.Linear):
-        assert isinstance(mlx_module, nn_mlx.Linear)
+        assert isinstance(mlx_module, nn_mlx.Linear), f"{type(mlx_module)}"
         mlx_module.weight = mx.array(torch_module.weight.detach().numpy())
         if torch_module.bias is not None:
             mlx_module.bias = mx.array(torch_module.bias.detach().numpy())
 
     elif isinstance(torch_module, nn_torch.Sequential):
-        assert isinstance(mlx_module, nn_mlx.Sequential)
+        assert isinstance(mlx_module, nn_mlx.Sequential), f"{type(mlx_module)}"
         for mod_t, mod_m in zip(torch_module, mlx_module.layers):
             transfer_weights(mod_t, mod_m)
 
     # Leaf module or high-level containers.
     elif isinstance(torch_module, nn_torch.Module):
-        assert isinstance(mlx_module, nn_mlx.Module)
+        assert isinstance(mlx_module, nn_mlx.Module), f"{type(mlx_module)}"
         sub_t = dict(torch_module.named_children())
-
-        # Leaf module (norm, activation, etc.).
-        if len(sub_t) == 0:
-            return
 
         # Containers and composition of modules.
         for name, mod_t in sub_t.items():
-            assert name in mlx_module
+            assert name in mlx_module, f"{name}"
             transfer_weights(mod_t, mlx_module[name])
 
+        # Fallback to transfer params with heuristics for weight shapes.
+        transfer_params(torch_module, mlx_module)
     else:
         raise ValueError(f"Module '{type(torch_module)}' not supported.")
 
 
 def transfer_params(torch_module: nn_torch.Module, mlx_module: nn_mlx.Module):
-    subp_t = dict(torch_module.named_parameters())
-
-    if len(subp_t) == 0:
-        return
+    subp_t = dict(torch_module.named_parameters(recurse=False))
 
     for name, p_t in subp_t.items():
-        assert name in mlx_module
-        assert p_t.ndim == mlx_module[name]
+        assert name in mlx_module, f"{name}"
+        assert p_t.ndim == mlx_module[name].ndim
 
         if p_t.ndim == 1 or p_t.ndim == 2:
             mlx_module[name] = mx.array(p_t.detach().numpy())

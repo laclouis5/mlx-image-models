@@ -7,7 +7,7 @@ from .helpers import make_divisible, to_2tuple
 from .trace_utils import _assert
 
 
-def rel_logits_1d(q: mx.array, rel_k: mx.array, permute_mask: List[int]):
+def rel_logits_1d(q: mx.array, rel_k: mx.array, permute_mask: List[int]) -> mx.array:
     B, H, W, _ = q.shape
 
     x = q @ rel_k.transpose(1, 0)
