@@ -1,92 +1,75 @@
-"""Bilinear-Attention-Transform and Non-Local Attention
+from typing import Callable
 
-Paper: `Non-Local Neural Networks With Grouped Bilinear Attentional Transforms`
-    - https://openaccess.thecvf.com/content_CVPR_2020/html/Chi_Non-Local_Neural_Networks_With_Grouped_Bilinear_Attentional_Transforms_CVPR_2020_paper.html
-Adapted from original code: https://github.com/BA-Transform/BAT-Image-Classification
-"""
+import mlx.core as mx
+from mlx import nn
 
-import torch
-from torch import nn
-from torch.nn import functional as F
-
+from . import mlx_layers as L
 from .conv_bn_act import ConvNormAct
 from .helpers import make_divisible
 from .trace_utils import _assert
 
 
 class NonLocalAttn(nn.Module):
-    """Spatial NL block for image classification.
-
-    This was adapted from https://github.com/BA-Transform/BAT-Image-Classification
-    Their NonLocal impl inspired by https://github.com/facebookresearch/video-nonlocal-net.
-    """
-
     def __init__(
         self,
-        in_channels,
-        use_scale=True,
-        rd_ratio=1 / 8,
-        rd_channels=None,
-        rd_divisor=8,
+        in_channels: int,
+        use_scale: bool = True,
+        rd_ratio: float = 1 / 8,
+        rd_channels: int | None = None,
+        rd_divisor: int = 8,
         **kwargs,
     ):
-        super(NonLocalAttn, self).__init__()
+        super().__init__()
+
         if rd_channels is None:
             rd_channels = make_divisible(in_channels * rd_ratio, divisor=rd_divisor)
+
         self.scale = in_channels**-0.5 if use_scale else 1.0
+
         self.t = nn.Conv2d(in_channels, rd_channels, kernel_size=1, stride=1, bias=True)
         self.p = nn.Conv2d(in_channels, rd_channels, kernel_size=1, stride=1, bias=True)
         self.g = nn.Conv2d(in_channels, rd_channels, kernel_size=1, stride=1, bias=True)
         self.z = nn.Conv2d(rd_channels, in_channels, kernel_size=1, stride=1, bias=True)
-        self.norm = nn.BatchNorm2d(in_channels)
-        self.reset_parameters()
 
-    def forward(self, x):
-        shortcut = x
+        self.norm = nn.BatchNorm(in_channels)
 
+    def __call__(self, x: mx.array) -> mx.array:
+        shortcut = x  # (B, H, W, C)
+
+        # (B, H, W, R)
         t = self.t(x)
         p = self.p(x)
         g = self.g(x)
 
-        B, C, H, W = t.size()
-        t = t.view(B, C, -1).permute(0, 2, 1)
-        p = p.view(B, C, -1)
-        g = g.view(B, C, -1).permute(0, 2, 1)
+        B, H, W, R = t.shape
 
-        att = torch.bmm(t, p) * self.scale
-        att = F.softmax(att, dim=2)
-        x = torch.bmm(att, g)
+        # (B, 1, H*W, R)
+        t = t.reshape(B, 1, R, -1)
+        p = p.reshape(B, 1, R, -1)
+        g = g.reshape(B, 1, R, -1)
 
-        x = x.permute(0, 2, 1).reshape(B, C, H, W)
+        # (B, H*W, R)
+        x = mx.fast.scaled_dot_product_attention(t, p, g, scale=self.scale).squeeze(1)
+
+        # (B, H, W, R)
+        x = x.reshape(B, H, W, R)
+
+        # (B, H, W, C)
         x = self.z(x)
-        x = self.norm(x) + shortcut
 
-        return x
-
-    def reset_parameters(self):
-        for name, m in self.named_modules():
-            if isinstance(m, nn.Conv2d):
-                nn.init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="relu")
-                if len(list(m.parameters())) > 1:
-                    nn.init.constant_(m.bias, 0.0)
-            elif isinstance(m, nn.BatchNorm2d):
-                nn.init.constant_(m.weight, 0)
-                nn.init.constant_(m.bias, 0)
-            elif isinstance(m, nn.GroupNorm):
-                nn.init.constant_(m.weight, 0)
-                nn.init.constant_(m.bias, 0)
+        return self.norm(x) + shortcut
 
 
 class BilinearAttnTransform(nn.Module):
     def __init__(
         self,
-        in_channels,
-        block_size,
-        groups,
-        act_layer=nn.ReLU,
-        norm_layer=nn.BatchNorm2d,
+        in_channels: int,
+        block_size: int,
+        groups: int,
+        act_layer: str | Callable[[], nn.Module] | None = nn.ReLU,
+        norm_layer: str | Callable[[int], nn.Module] | None = nn.BatchNorm,
     ):
-        super(BilinearAttnTransform, self).__init__()
+        super().__init__()
 
         self.conv1 = ConvNormAct(
             in_channels, groups, 1, act_layer=act_layer, norm_layer=norm_layer
@@ -100,72 +83,106 @@ class BilinearAttnTransform(nn.Module):
         self.conv2 = ConvNormAct(
             in_channels, in_channels, 1, act_layer=act_layer, norm_layer=norm_layer
         )
+
         self.block_size = block_size
         self.groups = groups
         self.in_channels = in_channels
 
-    def resize_mat(self, x, t: int):
-        B, C, block_size, block_size1 = x.shape
-        _assert(block_size == block_size1, "")
+    def _resize_mat(self, x: mx.array, t: int) -> mx.array:
+        B, C, H, W = x.shape
+        _assert(H == W, "")
+
         if t <= 1:
             return x
-        x = x.view(B * C, -1, 1, 1)
-        x = x * torch.eye(t, t, dtype=x.dtype, device=x.device)
-        x = x.view(B * C, block_size, block_size, t, t)
-        x = torch.cat(torch.split(x, 1, dim=1), dim=3)
-        x = torch.cat(torch.split(x, 1, dim=2), dim=4)
-        x = x.view(B, C, block_size * t, block_size * t)
-        return x
 
-    def forward(self, x):
-        _assert(x.shape[-1] % self.block_size == 0, "")
-        _assert(x.shape[-2] % self.block_size == 0, "")
-        B, C, H, W = x.shape
+        x = x.reshape(B, C, H, W, 1, 1)
+
+        # (B, C, H, W, t, t)
+        x = x * mx.eye(t, t)
+
+        # (B, C, H, t, W, t)
+        x = x.transpose(0, 1, 2, 4, 3, 5)
+
+        # (B, C, t*H, t*W)
+        return x.reshape(B, C, t * H, t * W)
+
+    def __call__(self, x: mx.array) -> mx.array:
+        _assert(x.shape[1] % self.block_size == 0, "")
+        _assert(x.shape[2] % self.block_size == 0, "")
+
+        B, H, W, C = x.shape
+
+        # (B, H, W, G)
         out = self.conv1(x)
-        rp = F.adaptive_max_pool2d(out, (self.block_size, 1))
-        cp = F.adaptive_max_pool2d(out, (1, self.block_size))
-        p = (
-            self.conv_p(rp)
-            .view(B, self.groups, self.block_size, self.block_size)
-            .sigmoid()
-        )
-        q = (
-            self.conv_q(cp)
-            .view(B, self.groups, self.block_size, self.block_size)
-            .sigmoid()
-        )
-        p = p / p.sum(dim=3, keepdim=True)
-        q = q / q.sum(dim=2, keepdim=True)
-        p = (
-            p.view(B, self.groups, 1, self.block_size, self.block_size)
-            .expand(
-                x.size(0),
-                self.groups,
-                C // self.groups,
-                self.block_size,
-                self.block_size,
-            )
-            .contiguous()
-        )
-        p = p.view(B, C, self.block_size, self.block_size)
-        q = (
-            q.view(B, self.groups, 1, self.block_size, self.block_size)
-            .expand(
-                x.size(0),
-                self.groups,
-                C // self.groups,
-                self.block_size,
-                self.block_size,
-            )
-            .contiguous()
-        )
-        q = q.view(B, C, self.block_size, self.block_size)
-        p = self.resize_mat(p, H // self.block_size)
-        q = self.resize_mat(q, W // self.block_size)
-        y = p.matmul(x)
-        y = y.matmul(q)
 
-        y = self.conv2(y)
+        # (B, K, 1, G)
+        rp = L.adaptive_max_pool2d(out, output_size=(self.block_size, 1))
+
+        # (B, 1, K, G)
+        cp = L.adaptive_max_pool2d(out, output_size=(1, self.block_size))
+
+        # (B, 1, 1, K*K*G) -> (B, G, K, K)
+        p = mx.sigmoid(
+            self.conv_p(rp).reshape(B, self.groups, self.block_size, self.block_size)
+        )
+
+        # (B, 1, 1, K*K*G) -> (B, G, K, K)
+        q = mx.sigmoid(
+            self.conv_q(cp).reshape(B, self.groups, self.block_size, self.block_size)
+        )
+
+        # (B, G, K, K)
+        p = p / p.sum(axis=3, keepdims=True)
+
+        # (B, G, K, K)
+        q = q / q.sum(axis=2, keepdims=True)
+
+        # (B, G, K, K) -> (B, G, 1, K, K) -> (B, G, C/G, K, K)
+        p = mx.broadcast_to(
+            p.reshape(B, self.groups, 1, self.block_size, self.block_size),
+            shape=(
+                B,
+                self.groups,
+                C // self.groups,
+                self.block_size,
+                self.block_size,
+            ),
+        )
+
+        # (B, G, C/G, K, K) -> (B, C, K, K)
+        p = p.reshape(B, C, self.block_size, self.block_size)
+
+        # (B, G, K, K) -> (B, G, 1, K, K) -> (B, G, C/G, K, K)
+        q = mx.broadcast_to(
+            q.reshape(B, self.groups, 1, self.block_size, self.block_size),
+            shape=(
+                B,
+                self.groups,
+                C // self.groups,
+                self.block_size,
+                self.block_size,
+            ),
+        )
+
+        # (B, G, C/G, K, K) -> (B, C, K, K)
+        q = q.reshape(B, C, self.block_size, self.block_size)
+
+        # (B, C, H, H)
+        p = self._resize_mat(p, H // self.block_size)
+
+        # (B, C, W, W)
+        q = self._resize_mat(q, W // self.block_size)
+
+        print(p.shape, q.shape)
+
+        # (B, C, H, H) @ (B, H, W, C) -> (B, C, H, W)
+        y = p @ x.transpose(0, 3, 1, 2)
+
+        # (B, C, H, W) @ (B, C, W, W) -> (B, C, H, W)
+        y = y @ q
+
+        # (B, H, W, C)
+        y = self.conv2(y.transpose(0, 2, 3, 1))
         return y
 
 
@@ -176,20 +193,22 @@ class BatNonLocalAttn(nn.Module):
 
     def __init__(
         self,
-        in_channels,
-        block_size=7,
-        groups=2,
-        rd_ratio=0.25,
-        rd_channels=None,
-        rd_divisor=8,
-        drop_rate=0.2,
-        act_layer=nn.ReLU,
-        norm_layer=nn.BatchNorm2d,
+        in_channels: int,
+        block_size: int = 7,
+        groups: int = 2,
+        rd_ratio: float = 0.25,
+        rd_channels: int | None = None,
+        rd_divisor: int = 8,
+        drop_rate: float = 0.2,
+        act_layer: str | Callable[[], nn.Module] | None = nn.ReLU,
+        norm_layer: str | Callable[[int], nn.Module] | None = nn.BatchNorm,
         **_,
     ):
         super().__init__()
+
         if rd_channels is None:
             rd_channels = make_divisible(in_channels * rd_ratio, divisor=rd_divisor)
+
         self.conv1 = ConvNormAct(
             in_channels, rd_channels, 1, act_layer=act_layer, norm_layer=norm_layer
         )
@@ -201,7 +220,7 @@ class BatNonLocalAttn(nn.Module):
         )
         self.dropout = nn.Dropout2d(p=drop_rate)
 
-    def forward(self, x):
+    def __call__(self, x: mx.array) -> mx.array:
         xl = self.conv1(x)
         y = self.ba(xl)
         y = self.conv2(y)

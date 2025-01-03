@@ -22,3 +22,4 @@ Things that won't be supported:
 
 - [ ] Use FP32 for norms activations sensitive to low precision.
 - [ ] Convert transient init to functional (i.e `nn.MaxPool(2)(x)`) in `__call__`
+- [ ] Remove all dependencies except MLX.
