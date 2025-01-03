@@ -56,20 +56,25 @@ def transfer_weights(torch_module: nn_torch.Module, mlx_module: nn_mlx.Module):
         if torch_module.bias is not None:
             mlx_module.bias = mx.array(torch_module.bias.detach().numpy())
 
-    elif isinstance(torch_module, nn_torch.Linear):
-        assert isinstance(mlx_module, nn_mlx.Linear), f"{type(mlx_module)}"
-        mlx_module.weight = mx.array(torch_module.weight.detach().numpy())
-        if torch_module.bias is not None:
-            mlx_module.bias = mx.array(torch_module.bias.detach().numpy())
-
     elif isinstance(torch_module, nn_torch.Sequential):
         assert isinstance(mlx_module, nn_mlx.Sequential), f"{type(mlx_module)}"
         for mod_t, mod_m in zip(torch_module, mlx_module.layers):
             transfer_weights(mod_t, mod_m)
 
+    elif isinstance(torch_module, nn_torch.ModuleList):
+        assert isinstance(mlx_module, list), f"{type(mlx_module)}"
+        for mod_t, mod_m in zip(torch_module, mlx_module):
+            transfer_weights(mod_t, mod_m)
+
+    elif isinstance(torch_module, nn_torch.ModuleDict):
+        assert isinstance(mlx_module, dict), f"{type(mlx_module)}"
+        for name, mod_t in torch_module.items():
+            assert name in mlx_module, f"{name}"
+            transfer_weights(mod_t, mlx_module[name])
+
     # Leaf module or high-level containers.
     elif isinstance(torch_module, nn_torch.Module):
-        assert isinstance(mlx_module, nn_mlx.Module), f"{type(mlx_module)}"
+        assert isinstance(mlx_module, (nn_mlx.Module)), f"{type(mlx_module)}"
         sub_t = dict(torch_module.named_children())
 
         # Containers and composition of modules.
