@@ -14,7 +14,7 @@ from . import weights as W
 def test_channel_attn(bias):
     torch.manual_seed(42)
 
-    x_mlx = U.sample_mlx_array_2d(shape=(1, 32, 48, 128))
+    x_mlx = U.sample_mlx_array_2d(shape=(2, 32, 48, 128))
     x_torch = U.mlx_to_torch_2d(x_mlx)
 
     mod_mlx = mlx_m.ChannelAttn(channels=128, mlp_bias=bias)
@@ -38,7 +38,7 @@ def test_channel_attn(bias):
 def test_light_channel_attn(bias):
     torch.manual_seed(42)
 
-    x_mlx = U.sample_mlx_array_2d(shape=(1, 32, 48, 128))
+    x_mlx = U.sample_mlx_array_2d(shape=(2, 32, 48, 128))
     x_torch = U.mlx_to_torch_2d(x_mlx)
 
     mod_mlx = mlx_m.LightChannelAttn(channels=128, mlp_bias=bias)
@@ -62,7 +62,7 @@ def test_light_channel_attn(bias):
 def test_spatial_attn(kernel_size):
     torch.manual_seed(42)
 
-    x_mlx = U.sample_mlx_array_2d(shape=(1, 32, 48, 128))
+    x_mlx = U.sample_mlx_array_2d(shape=(2, 32, 48, 128))
     x_torch = U.mlx_to_torch_2d(x_mlx)
 
     mod_mlx = mlx_m.SpatialAttn(kernel_size=kernel_size)
@@ -86,7 +86,7 @@ def test_spatial_attn(kernel_size):
 def test_lights_patial_attn(kernel_size):
     torch.manual_seed(42)
 
-    x_mlx = U.sample_mlx_array_2d(shape=(1, 32, 48, 128))
+    x_mlx = U.sample_mlx_array_2d(shape=(2, 32, 48, 128))
     x_torch = U.mlx_to_torch_2d(x_mlx)
 
     mod_mlx = mlx_m.LightSpatialAttn(kernel_size=kernel_size)
@@ -111,7 +111,7 @@ def test_lights_patial_attn(kernel_size):
 def test_cbam(kernel_size, bias):
     torch.manual_seed(42)
 
-    x_mlx = U.sample_mlx_array_2d(shape=(1, 32, 48, 128))
+    x_mlx = U.sample_mlx_array_2d(shape=(2, 32, 48, 128))
     x_torch = U.mlx_to_torch_2d(x_mlx)
 
     mod_mlx = mlx_m.CbamModule(
@@ -140,7 +140,7 @@ def test_cbam(kernel_size, bias):
 def test_light_cbam(kernel_size, bias):
     torch.manual_seed(42)
 
-    x_mlx = U.sample_mlx_array_2d(shape=(1, 32, 48, 128))
+    x_mlx = U.sample_mlx_array_2d(shape=(2, 32, 48, 128))
     x_torch = U.mlx_to_torch_2d(x_mlx)
 
     mod_mlx = mlx_m.LightCbamModule(

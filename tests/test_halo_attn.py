@@ -62,9 +62,8 @@ def test_pos_emb_rel(scale):
 
     weights.transfer_weights(mod_timm, mod_mlx)
 
-    out_mlx = mod_mlx(q=x_mlx)
     out_timm = mod_timm(q=x_torch)
-
+    out_mlx = mod_mlx(q=x_mlx)
     mx.eval(out_mlx)
 
     out_mlx = np.array(out_mlx)
@@ -97,9 +96,8 @@ def test_halo_attn(bias, stride):
 
     weights.transfer_weights(mod_timm, mod_mlx)
 
-    out_mlx = mod_mlx(x_mlx)
     out_timm = mod_timm(x_torch)
-
+    out_mlx = mod_mlx(x_mlx)
     mx.eval(out_mlx)
 
     out_mlx = U.mlx_to_numpy_2d(out_mlx)

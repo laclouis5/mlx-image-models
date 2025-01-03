@@ -14,7 +14,7 @@ from . import weights as W
 def test_eca(use_mlp):
     torch.manual_seed(42)
 
-    x_mlx = U.sample_mlx_array_2d(shape=(1, 32, 48, 128))
+    x_mlx = U.sample_mlx_array_2d(shape=(2, 32, 48, 128))
     x_torch = U.mlx_to_torch_2d(x_mlx)
 
     mod_mlx = mlx_m.EcaModule(channels=128, use_mlp=use_mlp)
@@ -37,7 +37,7 @@ def test_eca(use_mlp):
 def test_ceca():
     torch.manual_seed(42)
 
-    x_mlx = U.sample_mlx_array_2d(shape=(1, 32, 48, 128))
+    x_mlx = U.sample_mlx_array_2d(shape=(2, 32, 48, 128))
     x_torch = U.mlx_to_torch_2d(x_mlx)
 
     mod_mlx = mlx_m.CecaModule(channels=128)

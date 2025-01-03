@@ -9,4 +9,3 @@ def ndgrid(*tensors: mx.array) -> Tuple[mx.array, ...]:
 
 def meshgrid(*tensors: mx.array) -> Tuple[mx.array, ...]:
     return mx.meshgrid(*tensors, indexing="xy")
- 

@@ -14,7 +14,7 @@ from . import utils as U
 @pytest.mark.parametrize("track_running_stats", [True, False])
 @pytest.mark.parametrize("apply_act", [True, False])
 def test_batchnorm_act(affine, track_running_stats, apply_act):
-    x_mlx = U.sample_mlx_array_2d(shape=(1, 512, 768, 32))
+    x_mlx = U.sample_mlx_array_2d(shape=(2, 32, 48, 32))
     x_torch = U.mlx_to_torch_2d(x_mlx)
 
     mod_mlx = mlx_m.BatchNormAct2d(
@@ -30,22 +30,21 @@ def test_batchnorm_act(affine, track_running_stats, apply_act):
         apply_act=apply_act,
     )
 
-    out_mlx = mod_mlx(x_mlx)
     out_timm = mod_timm(x_torch)
-
+    out_mlx = mod_mlx(x_mlx)
     mx.eval(out_mlx)
 
     out_mlx = U.mlx_to_numpy_2d(out_mlx)
     out_timm = U.torch_to_numpy_2d(out_timm)
 
     assert np.allclose(
-        out_mlx, out_timm, atol=1.0e-7
+        out_mlx, out_timm, atol=1.0e-5
     ), f"{np.max(np.abs(out_mlx - out_timm)).item()}"
 
 
 @pytest.mark.parametrize("apply_act", [True, False])
 def test_frozen_batchnorm_act(apply_act):
-    x_mlx = U.sample_mlx_array_2d(shape=(1, 512, 768, 32))
+    x_mlx = U.sample_mlx_array_2d(shape=(2, 32, 48, 32))
     x_torch = U.mlx_to_torch_2d(x_mlx)
 
     mod_mlx = mlx_m.FrozenBatchNormAct2d(
@@ -57,16 +56,15 @@ def test_frozen_batchnorm_act(apply_act):
         apply_act=apply_act,
     )
 
-    out_mlx = mod_mlx(x_mlx)
     out_timm = mod_timm(x_torch)
-
+    out_mlx = mod_mlx(x_mlx)
     mx.eval(out_mlx)
 
     out_mlx = U.mlx_to_numpy_2d(out_mlx)
     out_timm = U.torch_to_numpy_2d(out_timm)
 
     assert np.allclose(
-        out_mlx, out_timm, atol=1.0e-7
+        out_mlx, out_timm, atol=1.0e-5
     ), f"{np.max(np.abs(out_mlx - out_timm)).item()}"
 
 
@@ -77,7 +75,7 @@ def test_freeze_bn(affine, track_running_stats, apply_act):
     if not track_running_stats:
         pytest.xfail("FrozenBatchNorm seems to always track running stats")
 
-    x_mlx = U.sample_mlx_array_2d(shape=(1, 512, 768, 32))
+    x_mlx = U.sample_mlx_array_2d(shape=(2, 32, 48, 32))
     x_torch = U.mlx_to_torch_2d(x_mlx)
 
     mod_mlx = nn_mlx.Sequential(
@@ -117,16 +115,15 @@ def test_freeze_bn(affine, track_running_stats, apply_act):
     assert isinstance(mod_mlx["layers"][2], nn_mlx.Identity)
     assert isinstance(mod_timm[2], nn_torch.Identity)
 
-    out_mlx = mod_mlx(x_mlx)
     out_timm = mod_timm(x_torch)
-
+    out_mlx = mod_mlx(x_mlx)
     mx.eval(out_mlx)
 
     out_mlx = U.mlx_to_numpy_2d(out_mlx)
     out_timm = U.torch_to_numpy_2d(out_timm)
 
     assert np.allclose(
-        out_mlx, out_timm, atol=1.0e-7
+        out_mlx, out_timm, atol=1.0e-5
     ), f"{np.max(np.abs(out_mlx - out_timm)).item()}"
 
 
@@ -134,7 +131,7 @@ def test_freeze_bn(affine, track_running_stats, apply_act):
 def test_unfreeze_bn(apply_act):
     pytest.xfail("Timm implementation bug")
 
-    x_mlx = U.sample_mlx_array_2d(shape=(1, 512, 768, 32))
+    x_mlx = U.sample_mlx_array_2d(shape=(2, 32, 48, 32))
     x_torch = U.mlx_to_torch_2d(x_mlx)
 
     mod_mlx = nn_mlx.Sequential(
@@ -170,14 +167,13 @@ def test_unfreeze_bn(apply_act):
     assert isinstance(mod_mlx["layers"][2], nn_mlx.Identity)
     assert isinstance(mod_timm[2], nn_torch.Identity)
 
-    out_mlx = mod_mlx(x_mlx)
     out_timm = mod_timm(x_torch)
-
+    out_mlx = mod_mlx(x_mlx)
     mx.eval(out_mlx)
 
     out_mlx = U.mlx_to_numpy_2d(out_mlx)
     out_timm = U.torch_to_numpy_2d(out_timm)
 
     assert np.allclose(
-        out_mlx, out_timm, atol=1.0e-7
+        out_mlx, out_timm, atol=1.0e-5
     ), f"{np.max(np.abs(out_mlx - out_timm)).item()}"

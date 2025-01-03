@@ -19,7 +19,7 @@ def test_ge(extra_params, extent, feat_size, use_mlp, add_maxpool):
 
     torch.manual_seed(42)
 
-    x_mlx = U.sample_mlx_array_2d(shape=(1, 32, 48, 128))
+    x_mlx = U.sample_mlx_array_2d(shape=(2, 32, 48, 128))
     x_torch = U.mlx_to_torch_2d(x_mlx)
 
     mod_mlx = mlx_m.GatherExcite(

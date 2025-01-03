@@ -112,8 +112,9 @@ class BottleneckAttn(nn.Module):
         # (B, H, W, N*O2) -> (B, H*W, N, O2/N) -> (B, N, H*W, O2/N)
         v = v.reshape(B, -1, self.num_heads, self.dim_head_v).transpose(0, 2, 1, 3)
 
-        # (B*N, H*W, 01/N)
+        # (B, N, H*W, 01/N)
         pe = self.pos_embed(q.reshape(B * self.num_heads, H * W, -1))
+        pe = pe.reshape(B, self.num_heads, H * W, -1)
 
         if self.scale_pos_embed:
             # (B, N, H*W, O2/N)

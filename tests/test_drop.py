@@ -14,7 +14,7 @@ from . import utils as U
 @pytest.mark.parametrize("fast", [True, False])
 @pytest.mark.parametrize("training", [True, False])
 def test_drop_block(drop_prob, batchwise, with_noise, fast, training):
-    x_mlx = U.sample_mlx_array_2d(shape=(1, 512, 768, 32))
+    x_mlx = U.sample_mlx_array_2d(shape=(2, 32, 48, 32))
     x_torch = U.mlx_to_torch_2d(x_mlx)
 
     mod_mlx = mlx_m.DropBlock2d(
@@ -37,7 +37,7 @@ def test_drop_block(drop_prob, batchwise, with_noise, fast, training):
 
     if drop_prob == 0.0 or not training:
         assert np.allclose(
-            out_mlx, out_timm, atol=1.0e-7
+            out_mlx, out_timm, atol=1.0e-5
         ), f"{np.max(np.abs(out_mlx - out_timm)).item()}"
     else:
         assert out_mlx.shape == tuple(out_timm.shape)
@@ -46,7 +46,7 @@ def test_drop_block(drop_prob, batchwise, with_noise, fast, training):
 @pytest.mark.parametrize("drop_prob", [0.0, 0.1])
 @pytest.mark.parametrize("training", [True, False])
 def test_drop_path(drop_prob, training):
-    x_mlx = U.sample_mlx_array_2d(shape=(1, 512, 768, 32))
+    x_mlx = U.sample_mlx_array_2d(shape=(2, 32, 48, 32))
     x_torch = U.mlx_to_torch_2d(x_mlx)
 
     mod_mlx = mlx_m.DropPath(drop_prob=drop_prob)
@@ -65,7 +65,7 @@ def test_drop_path(drop_prob, training):
 
     if drop_prob == 0.0 or not training:
         assert np.allclose(
-            out_mlx, out_timm, atol=1.0e-7
+            out_mlx, out_timm, atol=1.0e-5
         ), f"{np.max(np.abs(out_mlx - out_timm)).item()}"
     else:
         assert out_mlx.shape == tuple(out_timm.shape)

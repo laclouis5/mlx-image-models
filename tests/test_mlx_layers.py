@@ -23,7 +23,7 @@ def test_avg_pool_2d_patched(kernel_size, stride, padding, count_include_pad):
 
     torch.manual_seed(42)
 
-    x_mlx = mx.ones((1, 4, 6, 1))
+    x_mlx = mx.ones((2, 4, 6, 1))
     x_torch = torch.from_numpy(np.array(x_mlx)).permute(0, 3, 1, 2)
 
     mod_mlx = mlx_m.AvgPool2d(

@@ -13,7 +13,7 @@ from . import utils as U
 
 @pytest.mark.parametrize("act_name", list(timm_acts._ACT_FN_DEFAULT.keys()))
 def test_act_fn(act_name):
-    x_mlx = U.sample_mlx_array_2d(shape=(1, 512, 768, 3))
+    x_mlx = U.sample_mlx_array_2d(shape=(2, 32, 48, 3))
     x_torch = U.mlx_to_torch_2d(x_mlx)
 
     mlx_act = get_act_fn(name=act_name)
@@ -34,7 +34,7 @@ def test_act_fn(act_name):
 
 @pytest.mark.parametrize("act_name", list(timm_acts._ACT_LAYER_DEFAULT.keys()))
 def test_act_layer(act_name):
-    x_mlx = U.sample_mlx_array_2d(shape=(1, 512, 768, 3))
+    x_mlx = U.sample_mlx_array_2d(shape=(2, 32, 48, 3))
     x_torch = U.mlx_to_torch_2d(x_mlx)
 
     mlx_act = create_act_layer(name=act_name)

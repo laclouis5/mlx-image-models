@@ -5,8 +5,6 @@ from torch import nn as nn_torch
 
 from mlx_im import layers as L_mlx
 
-from . import utils as U
-
 
 def transfer_weights(torch_module: nn_torch.Module, mlx_module: nn_mlx.Module):
     """Recursively transfer weights from a Torch module to a MLX module."""
@@ -80,12 +78,12 @@ def transfer_weights(torch_module: nn_torch.Module, mlx_module: nn_mlx.Module):
             transfer_weights(mod_t, mlx_module[name])
 
         # Fallback to transfer params with heuristics for weight shapes.
-        transfer_params(torch_module, mlx_module)
+        _transfer_params(torch_module, mlx_module)
     else:
         raise ValueError(f"Module '{type(torch_module)}' not supported.")
 
 
-def transfer_params(torch_module: nn_torch.Module, mlx_module: nn_mlx.Module):
+def _transfer_params(torch_module: nn_torch.Module, mlx_module: nn_mlx.Module):
     subp_t = dict(torch_module.named_parameters(recurse=False))
 
     for name, p_t in subp_t.items():

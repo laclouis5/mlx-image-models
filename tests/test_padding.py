@@ -12,12 +12,11 @@ from . import utils as U
 @pytest.mark.parametrize("stride", [(1, 1), (2, 2)])
 @pytest.mark.parametrize("dilation", [(1, 1), (2, 2)])
 def test_pad_same(kernel_size, stride, dilation):
-    x_mlx = U.sample_mlx_array_2d(shape=(1, 512, 768, 3))
+    x_mlx = U.sample_mlx_array_2d(shape=(2, 32, 48, 3))
     x_torch = U.mlx_to_torch_2d(x_mlx)
 
-    out_mlx = pad_same(x_mlx, kernel_size, stride, dilation)
     out_timm = timm_padding.pad_same(x_torch, kernel_size, stride, dilation)
-
+    out_mlx = pad_same(x_mlx, kernel_size, stride, dilation)
     mx.eval(out_mlx)
 
     out_mlx = U.mlx_to_numpy_2d(out_mlx)

@@ -13,7 +13,7 @@ from . import weights as W
 def test_grn():
     torch.manual_seed(42)
 
-    x_mlx = U.sample_mlx_array_2d(shape=(1, 32, 48, 128))
+    x_mlx = U.sample_mlx_array_2d(shape=(2, 32, 48, 128))
     x_torch = U.mlx_to_torch_2d(x_mlx)
 
     mod_mlx = mlx_m.GlobalResponseNorm(128)
@@ -39,10 +39,10 @@ def test_mlp(use_conv, bias):
     torch.manual_seed(42)
 
     if use_conv:
-        x_mlx = U.sample_mlx_array_2d(shape=(1, 32, 48, 128))
+        x_mlx = U.sample_mlx_array_2d(shape=(2, 32, 48, 128))
         x_torch = U.mlx_to_torch_2d(x_mlx)
     else:
-        x_mlx = mx.random.normal(shape=(1, 32, 128))
+        x_mlx = mx.random.normal(shape=(2, 32, 128))
         x_torch = torch.from_numpy(np.array(x_mlx))
 
     mod_mlx = mlx_m.Mlp(128, use_conv=use_conv, bias=bias)
@@ -76,7 +76,7 @@ def test_glu_mlp(bias, use_conv, gate_last):
         x_mlx = U.sample_mlx_array_2d(shape=(1, 32, 48, 128))
         x_torch = U.mlx_to_torch_2d(x_mlx)
     else:
-        x_mlx = mx.random.normal(shape=(1, 32, 128))
+        x_mlx = mx.random.normal(shape=(2, 32, 128))
         x_torch = torch.from_numpy(np.array(x_mlx))
 
     mod_mlx = mlx_m.GluMlp(128, bias=bias, use_conv=use_conv, gate_last=gate_last)
@@ -104,7 +104,7 @@ def test_glu_mlp(bias, use_conv, gate_last):
 def test_swi_glu(bias):
     torch.manual_seed(42)
 
-    x_mlx = mx.random.normal(shape=(1, 32, 128))
+    x_mlx = mx.random.normal(shape=(2, 32, 128))
     x_torch = torch.from_numpy(np.array(x_mlx))
 
     mod_mlx = mlx_m.SwiGLU(128, bias=bias)
@@ -128,7 +128,7 @@ def test_swi_glu(bias):
 def test_gated_mlp(bias):
     torch.manual_seed(42)
 
-    x_mlx = mx.random.normal(shape=(1, 32, 128))
+    x_mlx = mx.random.normal(shape=(2, 32, 128))
     x_torch = torch.from_numpy(np.array(x_mlx))
 
     mod_mlx = mlx_m.GatedMlp(128, bias=bias)
@@ -152,7 +152,7 @@ def test_gated_mlp(bias):
 def test_conv_mlp(bias):
     torch.manual_seed(42)
 
-    x_mlx = U.sample_mlx_array_2d(shape=(1, 32, 48, 128))
+    x_mlx = U.sample_mlx_array_2d(shape=(2, 32, 48, 128))
     x_torch = U.mlx_to_torch_2d(x_mlx)
 
     mod_mlx = mlx_m.ConvMlp(128, bias=bias)
@@ -177,14 +177,14 @@ def test_conv_mlp(bias):
 def test_grn_mlp(use_conv, bias):
     if not use_conv:
         pytest.xfail("GRN only makes sense for 2D inputs")
-        
+
     torch.manual_seed(42)
 
     if use_conv:
-        x_mlx = U.sample_mlx_array_2d(shape=(1, 32, 48, 128))
+        x_mlx = U.sample_mlx_array_2d(shape=(2, 32, 48, 128))
         x_torch = U.mlx_to_torch_2d(x_mlx)
     else:
-        x_mlx = mx.random.normal(shape=(1, 32, 128))
+        x_mlx = mx.random.normal(shape=(2, 32, 128))
         x_torch = torch.from_numpy(np.array(x_mlx))
 
     mod_mlx = mlx_m.GlobalResponseNormMlp(128, use_conv=use_conv, bias=bias)

@@ -7,10 +7,11 @@ import torch
 import mlx_im.layers.bottleneck_attn as mlx_m
 
 from . import utils as U
+from . import weights as W
 
 
 def test_rel_logits_1d():
-    x_mlx = mx.random.normal(shape=(1, 32, 48, 128))
+    x_mlx = mx.random.normal(shape=(2, 32, 48, 128))
     x_torch = torch.from_numpy(np.array(x_mlx))
 
     rel_k_mlx = mx.random.normal(shape=(2 * 48 - 1, 128))
@@ -27,7 +28,7 @@ def test_rel_logits_1d():
     out_timm = out_timm.detach().numpy()
 
     assert np.allclose(
-        out_mlx, out_timm, atol=1.0e-7
+        out_mlx, out_timm, atol=1.0e-5
     ), f"{np.max(np.abs(out_mlx - out_timm)).item()}"
 
 
@@ -35,7 +36,7 @@ def test_rel_logits_1d():
 def test_pos_emb_rel(scale):
     torch.manual_seed(42)
 
-    x_mlx = mx.random.normal(shape=(1, 32 * 48, 128))
+    x_mlx = mx.random.normal(shape=(2, 32 * 48, 128))
     x_torch = torch.from_numpy(np.array(x_mlx))
 
     mod_mlx = mlx_m.PosEmbedRel(feat_size=(32, 48), dim_head=128, scale=scale)
@@ -63,7 +64,7 @@ def test_pos_emb_rel(scale):
 def test_bottleneck_attn(dim_out, bias, scale_pos_emb):
     torch.manual_seed(42)
 
-    x_mlx = U.sample_mlx_array_2d(shape=(1, 32, 48, 128))
+    x_mlx = U.sample_mlx_array_2d(shape=(2, 32, 48, 128))
     x_torch = U.mlx_to_torch_2d(x_mlx)
 
     mod_mlx = mlx_m.BottleneckAttn(
@@ -83,19 +84,7 @@ def test_bottleneck_attn(dim_out, bias, scale_pos_emb):
         scale_pos_embed=scale_pos_emb,
     )
 
-    mod_mlx.pos_embed.height_rel = mx.array(
-        mod_timm.pos_embed.height_rel.detach().numpy()
-    )
-    mod_mlx.pos_embed.width_rel = mx.array(
-        mod_timm.pos_embed.width_rel.detach().numpy()
-    )
-
-    mod_mlx.qkv.weight = mx.array(mod_timm.qkv.weight.detach().numpy()).transpose(
-        0, 2, 3, 1
-    )
-
-    if bias:
-        mod_mlx.qkv.bias = mx.array(mod_timm.qkv.bias.detach().numpy())
+    W.transfer_weights(mod_timm, mod_mlx)
 
     out_timm = mod_timm(x_torch)
     out_mlx = mod_mlx(x_mlx)

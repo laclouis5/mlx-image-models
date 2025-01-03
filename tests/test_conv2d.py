@@ -7,6 +7,7 @@ from timm.layers.create_conv2d import create_conv2d as create_conv2d_torch
 from mlx_im.layers.create_conv2d import create_conv2d
 
 from . import utils as U
+from . import weights as W
 
 
 @pytest.mark.parametrize(
@@ -23,7 +24,7 @@ from . import utils as U
 @pytest.mark.parametrize("groups", [1, 2, 4])
 @pytest.mark.parametrize("bias", [True, False])
 def test_conv2d_same(kernel_size, padding, stride, dilation, groups, bias):
-    x_mlx = U.sample_mlx_array_2d(shape=(2, 512, 768, 4))
+    x_mlx = U.sample_mlx_array_2d(shape=(2, 32, 48, 4))
     x_torch = U.mlx_to_torch_2d(x_mlx)
 
     mlx_conv = create_conv2d(
@@ -47,16 +48,10 @@ def test_conv2d_same(kernel_size, padding, stride, dilation, groups, bias):
         bias=bias,
     )
 
-    mlx_conv.weight = U.torch_to_mlx_2d(timm_conv.weight)
+    W.transfer_weights(timm_conv, mlx_conv)
 
-    if timm_conv.bias is not None:
-        mlx_conv.bias = mx.array(timm_conv.bias.detach().numpy())
-
-    mx.eval(mlx_conv.parameters())
-
-    out_mlx = mlx_conv(x_mlx)
     out_timm = timm_conv(x_torch)
-
+    out_mlx = mlx_conv(x_mlx)
     mx.eval(out_mlx)
 
     out_mlx = U.mlx_to_numpy_2d(out_mlx)
@@ -75,7 +70,7 @@ def test_conv2d_same(kernel_size, padding, stride, dilation, groups, bias):
 )
 @pytest.mark.parametrize("bias", [True, False])
 def test_conv2d_mixed(kernel_size, padding, stride, dilation, bias):
-    x_mlx = U.sample_mlx_array_2d(shape=(2, 512, 768, 4))
+    x_mlx = U.sample_mlx_array_2d(shape=(2, 32, 48, 4))
     x_torch = U.mlx_to_torch_2d(x_mlx)
 
     mlx_conv = create_conv2d(
@@ -97,17 +92,10 @@ def test_conv2d_mixed(kernel_size, padding, stride, dilation, bias):
         bias=bias,
     )
 
-    for i, timm_layer in enumerate(timm_conv.values()):
-        mlx_conv.layers[i].weight = U.torch_to_mlx_2d(timm_layer.weight)
+    W.transfer_weights(timm_conv, mlx_conv)
 
-        if timm_layer.bias is not None:
-            mlx_conv.layers[i].bias = mx.array(timm_layer.bias.detach().numpy())
-
-    mx.eval(mlx_conv.parameters())
-
-    out_mlx = mlx_conv(x_mlx)
     out_timm = timm_conv(x_torch)
-
+    out_mlx = mlx_conv(x_mlx)
     mx.eval(out_mlx)
 
     out_mlx = U.mlx_to_numpy_2d(out_mlx)
@@ -129,7 +117,7 @@ def test_conv2d_mixed(kernel_size, padding, stride, dilation, bias):
 )
 @pytest.mark.parametrize("bias", [True, False])
 def test_conv2d_cond(kernel_size, padding, stride, dilation, bias):
-    x_mlx = U.sample_mlx_array_2d(shape=(2, 512, 768, 4))
+    x_mlx = U.sample_mlx_array_2d(shape=(2, 32, 48, 4))
     x_torch = U.mlx_to_torch_2d(x_mlx)
 
     r_mlx = mx.sigmoid(mx.random.normal((2, 2)))
@@ -156,21 +144,10 @@ def test_conv2d_cond(kernel_size, padding, stride, dilation, bias):
         num_experts=2,
     )
 
-    # NOTE: CondConv2d needs special care to convert the weights from timm to MLX.
-    mlx_conv.weight = mx.array(
-        timm_conv.weight.reshape(2, 16, 4, kernel_size, kernel_size)
-        .permute(0, 1, 3, 4, 2)
-        .reshape(2, -1)
-        .detach()
-        .numpy()
-    )
+    W.transfer_weights(timm_conv, mlx_conv)
 
-    if timm_conv.bias is not None:
-        mlx_conv.bias = mx.array(timm_conv.bias.detach().numpy())
-
-    out_mlx = mlx_conv(x_mlx, r_mlx)
     out_timm = timm_conv(x_torch, r_torch)
-
+    out_mlx = mlx_conv(x_mlx, r_mlx)
     mx.eval(out_mlx)
 
     out_mlx = U.mlx_to_numpy_2d(out_mlx)

@@ -65,7 +65,7 @@ class GlobalContext(nn.Module):
         if self.mlp_scale is not None:
             mlp_x = self.mlp_scale(context)
             x = x * self.gate(mlp_x)
-            
+
         if self.mlp_add is not None:
             mlp_x = self.mlp_add(context)
             x = x + mlp_x

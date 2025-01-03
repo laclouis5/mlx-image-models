@@ -5,10 +5,11 @@ import timm.layers.conv_bn_act as timm_m
 import mlx_im.layers.conv_bn_act as mlx_m
 
 from . import utils as U
+from . import weights as W
 
 
 def test_conv_bn_act():
-    x_mlx = U.sample_mlx_array_2d(shape=(1, 512, 768, 32))
+    x_mlx = U.sample_mlx_array_2d(shape=(2, 32, 48, 32))
     x_torch = U.mlx_to_torch_2d(x_mlx)
 
     mod_mlx = mlx_m.ConvNormAct(
@@ -28,10 +29,7 @@ def test_conv_bn_act():
         aa_layer="blurc",
     )
 
-    mod_mlx.conv.weight = mx.array(mod_timm.conv.weight.detach().numpy()).transpose(
-        0, 2, 3, 1
-    )
-    mod_mlx.conv.bias = mx.array(mod_timm.conv.bias.detach().numpy())
+    W.transfer_weights(mod_timm, mod_mlx)
 
     out_mlx = mod_mlx(x_mlx)
     out_timm = mod_timm(x_torch)
