@@ -37,9 +37,17 @@ def transfer_weights(torch_module: nn_torch.Module, mlx_module: nn_mlx.Module):
         for mod_t, mod_m in zip(torch_module.values(), mlx_module.layers):
             transfer_weights(mod_t, mod_m)
 
+    elif isinstance(torch_module, nn_torch.Conv3d):
+        assert isinstance(mlx_module, nn_mlx.Conv3d), f"{type(mlx_module)}"
+        weight = mx.array(torch_module.weight.detach().numpy())
+        mlx_module.weight = weight.transpose(0, 2, 3, 4, 1)
+        if torch_module.bias is not None:
+            mlx_module.bias = mx.array(torch_module.bias.detach().numpy())
+
     elif isinstance(torch_module, nn_torch.Conv2d):
         assert isinstance(mlx_module, nn_mlx.Conv2d), f"{type(mlx_module)}"
-        mlx_module.weight = U.torch_to_mlx_2d(torch_module.weight)
+        weight = mx.array(torch_module.weight.detach().numpy())
+        mlx_module.weight = weight.transpose(0, 2, 3, 1)
         if torch_module.bias is not None:
             mlx_module.bias = mx.array(torch_module.bias.detach().numpy())
 
@@ -83,14 +91,4 @@ def transfer_params(torch_module: nn_torch.Module, mlx_module: nn_mlx.Module):
     for name, p_t in subp_t.items():
         assert name in mlx_module, f"{name}"
         assert p_t.ndim == mlx_module[name].ndim
-
-        if p_t.ndim == 1 or p_t.ndim == 2:
-            mlx_module[name] = mx.array(p_t.detach().numpy())
-        elif p_t.ndim == 3:
-            weight = mx.array(p_t.detach().numpy())
-            mlx_module[name] = weight.transpose(0, 2, 1)
-        elif p_t.ndim == 4:
-            weight = mx.array(p_t.detach().numpy())
-            mlx_module[name] = weight.transpose(0, 2, 3, 1)
-        else:
-            raise ValueError(f"Paramter with {p_t.ndim} dimensions not supported.")
+        mlx_module[name] = mx.array(p_t.detach().numpy())
