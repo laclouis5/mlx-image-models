@@ -170,7 +170,6 @@ class HaloAttn(nn.Module):
         )
 
         # (B*N, Dqk+Dv, Nbh*Nbw, Ws*Ws)
-        # FIXME: Timm wrongly reshape N before splitting.
         kv = kv.transpose(0, -1, 1, 2, 3, 4)
         kv = kv.reshape(
             B * self.num_heads, self.dim_head_qk + self.dim_head_v, num_blocks, -1
