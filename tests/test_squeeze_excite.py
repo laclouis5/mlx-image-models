@@ -31,7 +31,7 @@ def test_se_module(add_maxpool, bias):
     out_timm = U.torch_to_numpy_2d(out_timm)
 
     assert np.allclose(
-        out_mlx, out_timm, atol=1.0e-4
+        out_mlx, out_timm, atol=1.0e-5
     ), f"{np.max(np.abs(out_mlx - out_timm)).item()}"
 
 
@@ -55,7 +55,7 @@ def test_eff_se_module(add_maxpool):
     out_timm = U.torch_to_numpy_2d(out_timm)
 
     assert np.allclose(
-        out_mlx, out_timm, atol=1.0e-4
+        out_mlx, out_timm, atol=1.0e-5
     ), f"{np.max(np.abs(out_mlx - out_timm)).item()}"
 
 
@@ -80,5 +80,5 @@ def test_sq_cl(bias):
     out_timm = U.torch_to_numpy_2d(out_timm)
 
     assert np.allclose(
-        out_mlx, out_timm, atol=1.0e-4
+        out_mlx, out_timm, atol=1.0e-5
     ), f"{np.max(np.abs(out_mlx - out_timm)).item()}"

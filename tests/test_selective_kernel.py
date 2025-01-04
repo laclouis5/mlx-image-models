@@ -45,5 +45,5 @@ def test_lambda_layer(out_channels, stride, keep_3x3, split_input):
     out_timm = U.torch_to_numpy_2d(out_timm)
 
     assert np.allclose(
-        out_mlx, out_timm, atol=1.0e-4
+        out_mlx, out_timm, atol=5.0e-5
     ), f"{np.max(np.abs(out_mlx - out_timm)).item()}"

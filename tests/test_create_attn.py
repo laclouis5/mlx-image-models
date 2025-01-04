@@ -61,5 +61,5 @@ def test_create_attn(attn_type):
     out_timm = U.torch_to_numpy_2d(out_timm)
 
     assert np.allclose(
-        out_mlx, out_timm, atol=1.0e-4
+        out_mlx, out_timm, atol=1.0e-5
     ), f"{np.max(np.abs(out_mlx - out_timm)).item()}"
