@@ -1,8 +1,7 @@
 from typing import Callable, Dict, Optional, Type
 
-import torch
-import torch.nn as nn
-from torch.nn import functional as F
+import mlx.core as mx
+from mlx import nn
 
 from ..layers import (
     Attention2d,
@@ -17,6 +16,7 @@ from ..layers import (
     make_divisible,
     to_2tuple,
 )
+from ..layers import mlx_layers as L
 
 __all__ = [
     "SqueezeExcite",
@@ -32,7 +32,7 @@ __all__ = [
 ModuleType = Type[nn.Module]
 
 
-def num_groups(group_size: Optional[int], channels: int):
+def num_groups(group_size: Optional[int], channels: int) -> int:
     if not group_size:  # 0 or None
         return 1  # normal conv with 1 group
     else:
@@ -42,17 +42,6 @@ def num_groups(group_size: Optional[int], channels: int):
 
 
 class SqueezeExcite(nn.Module):
-    """Squeeze-and-Excitation w/ specific features for EfficientNet/MobileNet family
-
-    Args:
-        in_chs (int): input channels to layer
-        rd_ratio (float): ratio of squeeze reduction
-        act_layer (nn.Module): activation layer of containing block
-        gate_layer (Callable): attention gate function
-        force_act_layer (nn.Module): override block's activation fn if this is set/bound
-        rd_round_fn (Callable): specify a fn to calculate rounding of reduced chs
-    """
-
     def __init__(
         self,
         in_chs: int,
@@ -63,18 +52,20 @@ class SqueezeExcite(nn.Module):
         force_act_layer: Optional[LayerType] = None,
         rd_round_fn: Optional[Callable] = None,
     ):
-        super(SqueezeExcite, self).__init__()
+        super().__init__()
+
         if rd_channels is None:
             rd_round_fn = rd_round_fn or round
             rd_channels = rd_round_fn(in_chs * rd_ratio)
-        act_layer = force_act_layer or act_layer
+
+        act_layer = force_act_layer if force_act_layer is not None else act_layer
         self.conv_reduce = nn.Conv2d(in_chs, rd_channels, 1, bias=True)
         self.act1 = create_act_layer(act_layer, inplace=True)
         self.conv_expand = nn.Conv2d(rd_channels, in_chs, 1, bias=True)
         self.gate = create_act_layer(gate_layer)
 
-    def forward(self, x):
-        x_se = x.mean((2, 3), keepdim=True)
+    def __call__(self, x: mx.array) -> mx.array:
+        x_se = x.mean(axis=(1, 2), keepdims=True)
         x_se = self.conv_reduce(x_se)
         x_se = self.act1(x_se)
         x_se = self.conv_expand(x_se)
@@ -82,8 +73,6 @@ class SqueezeExcite(nn.Module):
 
 
 class ConvBnAct(nn.Module):
-    """Conv + Norm Layer + Activation w/ optional skip connection"""
-
     def __init__(
         self,
         in_chs: int,
@@ -95,11 +84,12 @@ class ConvBnAct(nn.Module):
         pad_type: str = "",
         skip: bool = False,
         act_layer: LayerType = nn.ReLU,
-        norm_layer: LayerType = nn.BatchNorm2d,
+        norm_layer: LayerType = nn.BatchNorm,
         aa_layer: Optional[LayerType] = None,
         drop_path_rate: float = 0.0,
     ):
-        super(ConvBnAct, self).__init__()
+        super().__init__()
+
         norm_act_layer = get_norm_act_layer(norm_layer, act_layer)
         groups = num_groups(group_size, in_chs)
         self.has_skip = skip and stride == 1 and in_chs == out_chs
@@ -126,22 +116,20 @@ class ConvBnAct(nn.Module):
         else:  # location == 'bottleneck', block output
             return dict(module="", num_chs=self.conv.out_channels)
 
-    def forward(self, x):
+    def __call__(self, x: mx.array) -> mx.array:
         shortcut = x
+
         x = self.conv(x)
         x = self.bn1(x)
         x = self.aa(x)
+
         if self.has_skip:
             x = self.drop_path(x) + shortcut
+
         return x
 
 
 class DepthwiseSeparableConv(nn.Module):
-    """Depthwise-separable block
-    Used for DS convs in MobileNet-V1 and in the place of IR blocks that have no expansion
-    (factor of 1.0). This is an alternative to having a IR with an optional first pw conv.
-    """
-
     def __init__(
         self,
         in_chs: int,
@@ -156,12 +144,13 @@ class DepthwiseSeparableConv(nn.Module):
         pw_act: bool = False,
         s2d: int = 0,
         act_layer: LayerType = nn.ReLU,
-        norm_layer: LayerType = nn.BatchNorm2d,
+        norm_layer: LayerType = nn.BatchNorm,
         aa_layer: Optional[LayerType] = None,
         se_layer: Optional[ModuleType] = None,
         drop_path_rate: float = 0.0,
     ):
-        super(DepthwiseSeparableConv, self).__init__()
+        super().__init__()
+
         norm_act_layer = get_norm_act_layer(norm_layer, act_layer)
         self.has_skip = (stride == 1 and in_chs == out_chs) and not noskip
         self.has_pw_act = pw_act  # activation after point-wise conv
@@ -214,32 +203,27 @@ class DepthwiseSeparableConv(nn.Module):
         else:  # location == 'bottleneck', block output
             return dict(module="", num_chs=self.conv_pw.out_channels)
 
-    def forward(self, x):
+    def __call__(self, x: mx.array) -> mx.array:
         shortcut = x
+
         if self.conv_s2d is not None:
             x = self.conv_s2d(x)
             x = self.bn_s2d(x)
+
         x = self.conv_dw(x)
         x = self.bn1(x)
         x = self.aa(x)
         x = self.se(x)
         x = self.conv_pw(x)
         x = self.bn2(x)
+
         if self.has_skip:
             x = self.drop_path(x) + shortcut
+
         return x
 
 
 class InvertedResidual(nn.Module):
-    """Inverted residual block w/ optional SE
-
-    Originally used in MobileNet-V2 - https://arxiv.org/abs/1801.04381v4, this layer is often
-    referred to as 'MBConv' for (Mobile inverted bottleneck conv) and is also used in
-      * MNasNet - https://arxiv.org/abs/1807.11626
-      * EfficientNet - https://arxiv.org/abs/1905.11946
-      * MobileNet-V3 - https://arxiv.org/abs/1905.02244
-    """
-
     def __init__(
         self,
         in_chs: int,
@@ -255,13 +239,14 @@ class InvertedResidual(nn.Module):
         pw_kernel_size: int = 1,
         s2d: int = 0,
         act_layer: LayerType = nn.ReLU,
-        norm_layer: LayerType = nn.BatchNorm2d,
+        norm_layer: LayerType = nn.BatchNorm,
         aa_layer: Optional[LayerType] = None,
         se_layer: Optional[ModuleType] = None,
         conv_kwargs: Optional[Dict] = None,
         drop_path_rate: float = 0.0,
     ):
-        super(InvertedResidual, self).__init__()
+        super().__init__()
+
         norm_act_layer = get_norm_act_layer(norm_layer, act_layer)
         conv_kwargs = conv_kwargs or {}
         self.has_skip = (in_chs == out_chs and stride == 1) and not noskip
@@ -326,11 +311,13 @@ class InvertedResidual(nn.Module):
         else:  # location == 'bottleneck', block output
             return dict(module="", num_chs=self.conv_pwl.out_channels)
 
-    def forward(self, x):
+    def __call__(self, x: mx.array) -> mx.array:
         shortcut = x
+
         if self.conv_s2d is not None:
             x = self.conv_s2d(x)
             x = self.bn_s2d(x)
+
         x = self.conv_pw(x)
         x = self.bn1(x)
         x = self.conv_dw(x)
@@ -339,29 +326,26 @@ class InvertedResidual(nn.Module):
         x = self.se(x)
         x = self.conv_pwl(x)
         x = self.bn3(x)
+
         if self.has_skip:
             x = self.drop_path(x) + shortcut
+
         return x
 
 
 class LayerScale2d(nn.Module):
     def __init__(self, dim: int, init_values: float = 1e-5, inplace: bool = False):
         super().__init__()
-        self.inplace = inplace
-        self.gamma = nn.Parameter(init_values * torch.ones(dim))
 
-    def forward(self, x):
-        gamma = self.gamma.view(1, -1, 1, 1)
-        return x.mul_(gamma) if self.inplace else x * gamma
+        self.inplace = inplace
+        self.gamma = init_values * mx.ones(dim)
+
+    def __call__(self, x: mx.array) -> mx.array:
+        gamma = self.gamma.reshape(1, 1, 1, -1)
+        return x * gamma
 
 
 class UniversalInvertedResidual(nn.Module):
-    """Universal Inverted Residual Block (aka Universal Inverted Bottleneck, UIB)
-
-    For MobileNetV4 - https://arxiv.org/abs/, referenced from
-    https://github.com/tensorflow/models/blob/d93c7e932de27522b2fa3b115f58d06d6f640537/official/vision/modeling/layers/nn_blocks.py#L778
-    """
-
     def __init__(
         self,
         in_chs: int,
@@ -376,16 +360,18 @@ class UniversalInvertedResidual(nn.Module):
         noskip: bool = False,
         exp_ratio: float = 1.0,
         act_layer: LayerType = nn.ReLU,
-        norm_layer: LayerType = nn.BatchNorm2d,
+        norm_layer: LayerType = nn.BatchNorm,
         aa_layer: Optional[LayerType] = None,
         se_layer: Optional[ModuleType] = None,
         conv_kwargs: Optional[Dict] = None,
         drop_path_rate: float = 0.0,
         layer_scale_init_value: Optional[float] = 1e-5,
     ):
-        super(UniversalInvertedResidual, self).__init__()
+        super().__init__()
+
         conv_kwargs = conv_kwargs or {}
         self.has_skip = (in_chs == out_chs and stride == 1) and not noskip
+
         if stride > 1:
             assert dw_kernel_size_start or dw_kernel_size_mid or dw_kernel_size_end
 
@@ -496,8 +482,9 @@ class UniversalInvertedResidual(nn.Module):
         else:  # location == 'bottleneck', block output
             return dict(module="", num_chs=self.pw_proj.conv.out_channels)
 
-    def forward(self, x):
+    def __call__(self, x: mx.array) -> mx.array:
         shortcut = x
+
         x = self.dw_start(x)
         x = self.pw_exp(x)
         x = self.dw_mid(x)
@@ -505,18 +492,14 @@ class UniversalInvertedResidual(nn.Module):
         x = self.pw_proj(x)
         x = self.dw_end(x)
         x = self.layer_scale(x)
+
         if self.has_skip:
             x = self.drop_path(x) + shortcut
+
         return x
 
 
 class MobileAttention(nn.Module):
-    """Mobile Attention Block
-
-    For MobileNetV4 - https://arxiv.org/abs/, referenced from
-    https://github.com/tensorflow/models/blob/d93c7e932de27522b2fa3b115f58d06d6f640537/official/vision/modeling/layers/nn_blocks.py#L1504
-    """
-
     def __init__(
         self,
         in_chs: int,
@@ -535,7 +518,7 @@ class MobileAttention(nn.Module):
         cpe_dw_kernel_size: int = 3,
         noskip: bool = False,
         act_layer: LayerType = nn.ReLU,
-        norm_layer: LayerType = nn.BatchNorm2d,
+        norm_layer: LayerType = nn.BatchNorm,
         aa_layer: Optional[LayerType] = None,
         drop_path_rate: float = 0.0,
         attn_drop: float = 0.0,
@@ -544,18 +527,14 @@ class MobileAttention(nn.Module):
         use_bias: bool = False,
         use_cpe: bool = False,
     ):
-        super(MobileAttention, self).__init__()
+        super().__init__()
+
         norm_act_layer = get_norm_act_layer(norm_layer, act_layer)
         self.has_skip = (stride == 1 and in_chs == out_chs) and not noskip
         self.query_strides = to_2tuple(query_strides)
         self.kv_stride = kv_stride
         self.has_query_stride = any([s > 1 for s in self.query_strides])
 
-        # This CPE is different than the one suggested in the original paper.
-        # https://arxiv.org/abs/2102.10882
-        # 1. Rather than adding one CPE before the attention blocks, we add a CPE
-        #    into every attention block.
-        # 2. We replace the expensive Conv2D by a Seperable DW Conv.
         if use_cpe:
             self.conv_cpe_dw = create_conv2d(
                 in_chs,
@@ -617,7 +596,7 @@ class MobileAttention(nn.Module):
         else:  # location == 'bottleneck', block output
             return dict(module="", num_chs=self.conv_pw.out_channels)
 
-    def forward(self, x):
+    def __call__(self, x: mx.array) -> mx.array:
         if self.conv_cpe_dw is not None:
             x_cpe = self.conv_cpe_dw(x)
             x = x + x_cpe
@@ -626,6 +605,7 @@ class MobileAttention(nn.Module):
         x = self.norm(x)
         x = self.attn(x)
         x = self.layer_scale(x)
+
         if self.has_skip:
             x = self.drop_path(x) + shortcut
 
@@ -633,8 +613,6 @@ class MobileAttention(nn.Module):
 
 
 class CondConvResidual(InvertedResidual):
-    """Inverted residual block w/ CondConv routing"""
-
     def __init__(
         self,
         in_chs: int,
@@ -649,7 +627,7 @@ class CondConvResidual(InvertedResidual):
         exp_kernel_size: int = 1,
         pw_kernel_size: int = 1,
         act_layer: LayerType = nn.ReLU,
-        norm_layer: LayerType = nn.BatchNorm2d,
+        norm_layer: LayerType = nn.BatchNorm,
         aa_layer: Optional[LayerType] = None,
         se_layer: Optional[ModuleType] = None,
         num_experts: int = 0,
@@ -657,7 +635,8 @@ class CondConvResidual(InvertedResidual):
     ):
         self.num_experts = num_experts
         conv_kwargs = dict(num_experts=self.num_experts)
-        super(CondConvResidual, self).__init__(
+
+        super().__init__(
             in_chs,
             out_chs,
             dw_kernel_size=dw_kernel_size,
@@ -678,10 +657,12 @@ class CondConvResidual(InvertedResidual):
         )
         self.routing_fn = nn.Linear(in_chs, self.num_experts)
 
-    def forward(self, x):
+    def __call__(self, x: mx.array) -> mx.array:
         shortcut = x
-        pooled_inputs = F.adaptive_avg_pool2d(x, 1).flatten(1)  # CondConv routing
-        routing_weights = torch.sigmoid(self.routing_fn(pooled_inputs))
+
+        pooled_inputs = L.adaptive_avg_pool2d(x, 1).flatten(1)  # CondConv routing
+        routing_weights = mx.sigmoid(self.routing_fn(pooled_inputs))
+
         x = self.conv_pw(x, routing_weights)
         x = self.bn1(x)
         x = self.conv_dw(x, routing_weights)
@@ -689,23 +670,14 @@ class CondConvResidual(InvertedResidual):
         x = self.se(x)
         x = self.conv_pwl(x, routing_weights)
         x = self.bn3(x)
+
         if self.has_skip:
             x = self.drop_path(x) + shortcut
+
         return x
 
 
 class EdgeResidual(nn.Module):
-    """Residual block with expansion convolution followed by pointwise-linear w/ stride
-
-    Originally introduced in `EfficientNet-EdgeTPU: Creating Accelerator-Optimized Neural Networks with AutoML`
-        - https://ai.googleblog.com/2019/08/efficientnet-edgetpu-creating.html
-
-    This layer is also called FusedMBConv in the MobileDet, EfficientNet-X, and EfficientNet-V2 papers
-      * MobileDet - https://arxiv.org/abs/2004.14525
-      * EfficientNet-X - https://arxiv.org/abs/2102.05610
-      * EfficientNet-V2 - https://arxiv.org/abs/2104.00298
-    """
-
     def __init__(
         self,
         in_chs: int,
@@ -720,17 +692,20 @@ class EdgeResidual(nn.Module):
         exp_ratio: float = 1.0,
         pw_kernel_size: int = 1,
         act_layer: LayerType = nn.ReLU,
-        norm_layer: LayerType = nn.BatchNorm2d,
+        norm_layer: LayerType = nn.BatchNorm,
         aa_layer: Optional[LayerType] = None,
         se_layer: Optional[ModuleType] = None,
         drop_path_rate: float = 0.0,
     ):
-        super(EdgeResidual, self).__init__()
+        super().__init__()
+
         norm_act_layer = get_norm_act_layer(norm_layer, act_layer)
+
         if force_in_chs > 0:
             mid_chs = make_divisible(force_in_chs * exp_ratio)
         else:
             mid_chs = make_divisible(in_chs * exp_ratio)
+
         groups = num_groups(
             group_size, mid_chs
         )  # NOTE: Using out_chs of conv_exp for groups calc
@@ -771,14 +746,17 @@ class EdgeResidual(nn.Module):
         else:  # location == 'bottleneck', block output
             return dict(module="", num_chs=self.conv_pwl.out_channels)
 
-    def forward(self, x):
+    def __call__(self, x: mx.array) -> mx.array:
         shortcut = x
+
         x = self.conv_exp(x)
         x = self.bn1(x)
         x = self.aa(x)
         x = self.se(x)
         x = self.conv_pwl(x)
         x = self.bn2(x)
+
         if self.has_skip:
             x = self.drop_path(x) + shortcut
+
         return x
