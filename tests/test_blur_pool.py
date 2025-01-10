@@ -11,7 +11,7 @@ from . import utils as U
 @pytest.mark.parametrize("aa_layer", ["avg", "blur", "blurpc"])
 def test_blur_pool(aa_layer):
     if aa_layer == "blur":
-        pytest.xfail("Not supported")
+        pytest.xfail("Not supported (TODO: pad mode 'reflect').")
 
     x_mlx = U.sample_mlx_array_2d(shape=(2, 32, 48, 32))
     x_torch = U.mlx_to_torch_2d(x_mlx)
