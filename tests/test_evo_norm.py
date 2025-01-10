@@ -45,6 +45,8 @@ def test_instance_rms():
 @pytest.mark.parametrize("groups", [1, 2, 4, 8, 16, 32, 64])
 @pytest.mark.parametrize("flatten", [False, True])
 def test_group_std(groups, flatten):
+    # NOTE: Small error but does not seem to affect EvoNorm accuracy.
+    
     x_mlx = U.sample_mlx_array_2d(shape=(2, 32, 48, 64))
     x_torch = U.mlx_to_torch_2d(x_mlx)
 

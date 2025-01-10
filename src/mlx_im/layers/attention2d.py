@@ -39,7 +39,6 @@ class MultiQueryAttentionV2(nn.Module):
         b, h, w, c = x.shape  # (B, H, W, D)
 
         reshaped_x = x.reshape(b, -1, c)  # (B, H1*W1, D)
-
         # (B, H2*W2, D)
         if m is not None:
             reshaped_m = m.reshape(b, -1, m.shape[-1])
@@ -48,7 +47,6 @@ class MultiQueryAttentionV2(nn.Module):
 
         # (B, H1*W1, D) (N, K, D) -> (B, H1*W1, N, K)
         q = mx.einsum("bnd,hkd->bnhk", reshaped_x, self.query_proj)
-
         # (B, H2*W2, D) (D, K) -> (B, H2*W2, K)
         k = mx.einsum("bmd,dk->bmk", reshaped_m, self.key_proj)
 
@@ -62,6 +60,7 @@ class MultiQueryAttentionV2(nn.Module):
 
         # (B, H2*W2, D) (D, V) -> (B, H2*W2, V)
         v = mx.einsum("bmd,dv->bmv", reshaped_m, self.value_proj)
+        print(v[0, 0, :].max().item())
 
         # (B, H1*W1, N, H2*W2) (B, H2*W2, V) -> (B, H1*W1, N, V)
         o = mx.einsum("bnhm,bmv->bnhv", attn, v)

@@ -74,8 +74,13 @@ def test_attn2d(expand_first, head_first, bias, attn_mask):
 def test_mqa_v2(dim_out, attn_mask):
     dim = 128
 
+    pytest.fail("Timm issue with last reshape with missing transpose.")
+
     if dim_out != dim:
-        pytest.xfail("Timm implementation does not support dim != dim_out")
+        pytest.xfail("Timm implementation does not support dim != dim_out.")
+
+    if attn_mask:
+        pytest.fail("Timm issue with mask handling.")
 
     torch.manual_seed(42)
 

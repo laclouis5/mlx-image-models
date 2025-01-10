@@ -23,7 +23,7 @@ from . import utils as U
 )
 def test_norm_2d(norm_name):
     if "rms" in norm_name:
-        pytest.xfail("Timm RMSNorm buggy")
+        pytest.xfail("Timm RMSNorm buggy (#2380).")
 
     # NOTE: Channel size of 64 to be a multiple of num_groups of group norm.
     x_mlx = U.sample_mlx_array_2d(shape=(2, 32, 48, 64))
@@ -69,7 +69,7 @@ def test_norm_1d(norm_name):
 @pytest.mark.parametrize("norm_name", ["layernorm", "rmsnorm"])
 def test_norm(norm_name):
     if "rms" in norm_name:
-        pytest.xfail("Timm RMSNorm buggy")
+        pytest.xfail("Timm RMSNorm buggy (#2380).")
 
     x_mlx = mx.random.normal(
         shape=(2, 16, 128), key=mx.array([42, 42], dtype=mx.uint32)
